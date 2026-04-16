@@ -281,6 +281,31 @@ export class ProvisioningService {
 
     await this.provisionsService.updatePlan(provision, plan.planId);
 
+    if (provision.vpnNodeId && provision.vpnLogin) {
+      const vpnNode = await this.vpnNodesService.findById(provision.vpnNodeId);
+      await this.vpnClient.updateClient(
+        this.toVpnNodeConfig(vpnNode),
+        provision.vpnLogin,
+        {
+          email: event.email || provision.email,
+          externalSubscriptionId: event.externalSubscriptionId,
+          limitIp: plan.maxDevices,
+          enable: plan.vpnEnabled,
+        },
+      );
+    }
+
+    if (plan.storageEnabled && provision.storageBackendId && provision.storageBucket) {
+      const storageBackend = await this.storageBackendsService.findById(
+        provision.storageBackendId,
+      );
+      await this.storageProvider.updateQuota(
+        this.toStorageBackendConfig(storageBackend),
+        provision.storageBucket,
+        plan.storageSizeBytes,
+      );
+    }
+
     await this.billingProvider.updateServiceStatus(
       event.externalSubscriptionId,
       'active',

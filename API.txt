@@ -260,6 +260,17 @@ GET /metrics
 Хранимые в vpn_nodes поля host, apiKey, apiVersion, inboundId используются для вызовов 3x-ui API.
 
 9.1 Internal VPN client contract (не публичный HTTP endpoint)
+Runtime provider:
+- default: VPN_PROVIDER=noop
+- real 3x-ui adapter: VPN_PROVIDER=3x-ui
+- 3x-ui auth uses /login and session cookie
+- vpn_nodes.apiKey stores panel credentials as:
+  - JSON: {"username":"admin","password":"secret"}
+  - or string: admin:secret
+- vpn_nodes.host is the 3x-ui panel base URL
+- vpn_nodes.inboundId is required for create/update/delete client calls
+- admin API responses must redact vpn_nodes.apiKey and storage secrets
+
 createClient(vpnNode, provision, plan)
 {
   "email": "test@test.com",

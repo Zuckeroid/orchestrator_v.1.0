@@ -270,6 +270,12 @@ StorageProvider:
 	- взять maxDevices из Plan
 	- передать maxDevices в 3x-ui client settings как limitIp
 	- если maxDevices не задан → использовать 0 (без IP limit) или дефолт тарифа
+	- при событии plan_changed обновить limitIp у уже созданного клиента
+	- реальный adapter включается через VPN_PROVIDER=3x-ui
+	- vpn_nodes.apiKey хранит credentials панели 3x-ui:
+		- {"username":"admin","password":"secret"}
+		- или admin:secret
+	- ответы Admin API не должны возвращать apiKey / secretKey в открытом виде
 
 Пример:
 	Plan.maxDevices = 3

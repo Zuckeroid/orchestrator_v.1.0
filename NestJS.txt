@@ -210,6 +210,11 @@ integrations/vpn/
 Назначение:
 удалённое управление 3x-ui нодами напрямую через API панели.
 Отдельный агент / adapter service на VPN ноды не устанавливается.
+Provider switch:
+- VPN_PROVIDER=noop by default
+- VPN_PROVIDER=3x-ui enables direct 3x-ui HTTP adapter
+- 3x-ui adapter uses /login session auth and /panel/api/inbounds client endpoints
+- vpn_nodes.apiKey contains {"username":"...","password":"..."} or username:password
 -------------------------------------------------------------
 6.3 storage/
 -------------------------------------------------------------

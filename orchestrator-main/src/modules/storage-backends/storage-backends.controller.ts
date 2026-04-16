@@ -14,6 +14,7 @@ import {
   AdminApiKeyGuard,
   AdminRequest,
 } from '../../common/guards/admin-api-key.guard';
+import { StorageBackendEntity } from '../../database/entities/storage-backend.entity';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CreateStorageBackendDto } from './dto/create-storage-backend.dto';
 import { UpdateStorageBackendDto } from './dto/update-storage-backend.dto';
@@ -29,17 +30,21 @@ export class StorageBackendsController {
 
   @Get()
   async list() {
+    const backends = await this.storageBackendsService.list();
+
     return {
       success: true,
-      data: await this.storageBackendsService.list(),
+      data: backends.map((backend) => this.serializeBackend(backend)),
     };
   }
 
   @Get(':id')
   async get(@Param('id', new ParseUUIDPipe()) id: string) {
+    const backend = await this.storageBackendsService.findById(id);
+
     return {
       success: true,
-      data: await this.storageBackendsService.findById(id),
+      data: this.serializeBackend(backend),
     };
   }
 
@@ -60,7 +65,7 @@ export class StorageBackendsController {
 
     return {
       success: true,
-      data: backend,
+      data: this.serializeBackend(backend),
     };
   }
 
@@ -84,7 +89,7 @@ export class StorageBackendsController {
 
     return {
       success: true,
-      data: backend,
+      data: this.serializeBackend(backend),
     };
   }
 
@@ -107,7 +112,15 @@ export class StorageBackendsController {
 
     return {
       success: true,
-      data: backend,
+      data: this.serializeBackend(backend),
+    };
+  }
+
+  private serializeBackend(backend: StorageBackendEntity) {
+    return {
+      ...backend,
+      apiKey: '[redacted]',
+      secretKey: backend.secretKey ? '[redacted]' : null,
     };
   }
 }

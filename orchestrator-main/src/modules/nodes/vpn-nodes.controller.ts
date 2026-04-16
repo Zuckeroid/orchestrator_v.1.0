@@ -15,6 +15,7 @@ import {
   AdminRequest,
 } from '../../common/guards/admin-api-key.guard';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { VpnNodeEntity } from '../../database/entities/vpn-node.entity';
 import { ProvisionsService } from '../provisions/provisions.service';
 import { CreateVpnNodeDto } from './dto/create-vpn-node.dto';
 import { UpdateVpnNodeDto } from './dto/update-vpn-node.dto';
@@ -31,17 +32,21 @@ export class VpnNodesController {
 
   @Get()
   async list() {
+    const nodes = await this.vpnNodesService.list();
+
     return {
       success: true,
-      data: await this.vpnNodesService.list(),
+      data: nodes.map((node) => this.serializeNode(node)),
     };
   }
 
   @Get(':id')
   async get(@Param('id', new ParseUUIDPipe()) id: string) {
+    const node = await this.vpnNodesService.findById(id);
+
     return {
       success: true,
-      data: await this.vpnNodesService.findById(id),
+      data: this.serializeNode(node),
     };
   }
 
@@ -59,7 +64,7 @@ export class VpnNodesController {
 
     return {
       success: true,
-      data: node,
+      data: this.serializeNode(node),
     };
   }
 
@@ -83,7 +88,7 @@ export class VpnNodesController {
 
     return {
       success: true,
-      data: node,
+      data: this.serializeNode(node),
     };
   }
 
@@ -106,7 +111,7 @@ export class VpnNodesController {
 
     return {
       success: true,
-      data: node,
+      data: this.serializeNode(node),
     };
   }
 
@@ -115,6 +120,13 @@ export class VpnNodesController {
     return {
       success: true,
       data: await this.provisionsService.findAffectedByVpnNode(id),
+    };
+  }
+
+  private serializeNode(node: VpnNodeEntity) {
+    return {
+      ...node,
+      apiKey: '[redacted]',
     };
   }
 }
