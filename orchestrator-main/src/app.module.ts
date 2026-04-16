@@ -13,6 +13,7 @@ import { ProvisionsModule } from './modules/provisions/provisions.module';
 import { StorageBackendsModule } from './modules/storage-backends/storage-backends.module';
 import { HealthModule } from './modules/health/health.module';
 import { JobsModule } from './modules/jobs/jobs.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
     StorageBackendsModule,
     HealthModule,
     JobsModule,
+    AuditLogsModule,
     QueueModule,
   ],
   controllers: [WebhookController],

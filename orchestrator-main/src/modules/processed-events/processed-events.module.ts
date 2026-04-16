@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AdminApiKeyGuard } from '../../common/guards/admin-api-key.guard';
 import { ProcessedEventEntity } from '../../database/entities/processed-event.entity';
 import { ProcessedEventsController } from './processed-events.controller';
 import { ProcessedEventsService } from './processed-events.service';
@@ -7,7 +8,7 @@ import { ProcessedEventsService } from './processed-events.service';
 @Module({
   imports: [TypeOrmModule.forFeature([ProcessedEventEntity])],
   controllers: [ProcessedEventsController],
-  providers: [ProcessedEventsService],
+  providers: [ProcessedEventsService, AdminApiKeyGuard],
   exports: [ProcessedEventsService],
 })
 export class ProcessedEventsModule {}

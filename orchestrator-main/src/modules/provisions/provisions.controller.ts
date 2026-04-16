@@ -1,7 +1,16 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { AdminApiKeyGuard } from '../../common/guards/admin-api-key.guard';
 import { ProvisionsService } from './provisions.service';
 
 @Controller('provisions')
+@UseGuards(AdminApiKeyGuard)
 export class ProvisionsController {
   constructor(private readonly provisionsService: ProvisionsService) {}
 

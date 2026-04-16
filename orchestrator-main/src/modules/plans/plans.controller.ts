@@ -6,14 +6,25 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import {
+  AdminApiKeyGuard,
+  AdminRequest,
+} from '../../common/guards/admin-api-key.guard';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { PlansService } from './plans.service';
 
 @Controller('plans')
+@UseGuards(AdminApiKeyGuard)
 export class PlansController {
-  constructor(private readonly plansService: PlansService) {}
+  constructor(
+    private readonly plansService: PlansService,
+    private readonly auditLogsService: AuditLogsService,
+  ) {}
 
   @Get()
   async list() {
@@ -32,10 +43,20 @@ export class PlansController {
   }
 
   @Post()
-  async create(@Body() body: CreatePlanDto) {
+  async create(@Body() body: CreatePlanDto, @Req() request: AdminRequest) {
+    const plan = await this.plansService.create(body);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'plan',
+      entityId: plan.id,
+      action: 'create',
+      after: plan,
+    });
+
     return {
       success: true,
-      data: await this.plansService.create(body),
+      data: plan,
     };
   }
 
@@ -43,10 +64,23 @@ export class PlansController {
   async update(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: UpdatePlanDto,
+    @Req() request: AdminRequest,
   ) {
+    const before = await this.plansService.getById(id);
+    const plan = await this.plansService.update(id, body);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'plan',
+      entityId: plan.id,
+      action: 'update',
+      before,
+      after: plan,
+    });
+
     return {
       success: true,
-      data: await this.plansService.update(id, body),
+      data: plan,
     };
   }
 }

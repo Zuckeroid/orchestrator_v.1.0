@@ -7,36 +7,32 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AdminApiKeyGuard } from '../../common/guards/admin-api-key.guard';
-import { JobsService } from './jobs.service';
+import { AuditLogsService } from './audit-logs.service';
 
-@Controller('jobs')
+@Controller('audit-logs')
 @UseGuards(AdminApiKeyGuard)
-export class JobsController {
-  constructor(private readonly jobsService: JobsService) {}
+export class AuditLogsController {
+  constructor(private readonly auditLogsService: AuditLogsService) {}
 
   @Get()
   async list(
-    @Query('status') status?: string,
-    @Query('type') type?: string,
+    @Query('entityType') entityType?: string,
+    @Query('entityId') entityId?: string,
+    @Query('action') action?: string,
+    @Query('actor') actor?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return {
       success: true,
-      data: await this.jobsService.listPersisted({
-        status,
-        type,
+      data: await this.auditLogsService.list({
+        entityType,
+        entityId,
+        action,
+        actor,
         page: page ? Number(page) : undefined,
         limit: limit ? Number(limit) : undefined,
       }),
-    };
-  }
-
-  @Get('queue')
-  async queue() {
-    return {
-      success: true,
-      data: await this.jobsService.getQueueOverview(),
     };
   }
 
@@ -44,7 +40,7 @@ export class JobsController {
   async get(@Param('id', new ParseUUIDPipe()) id: string) {
     return {
       success: true,
-      data: await this.jobsService.getPersistedById(id),
+      data: await this.auditLogsService.getById(id),
     };
   }
 }

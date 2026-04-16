@@ -1,7 +1,16 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { AdminApiKeyGuard } from '../../common/guards/admin-api-key.guard';
 import { ProcessedEventsService } from './processed-events.service';
 
 @Controller('processed-events')
+@UseGuards(AdminApiKeyGuard)
 export class ProcessedEventsController {
   constructor(private readonly processedEventsService: ProcessedEventsService) {}
 
