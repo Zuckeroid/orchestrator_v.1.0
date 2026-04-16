@@ -14,11 +14,14 @@ import { StorageBackendsModule } from './modules/storage-backends/storage-backen
 import { HealthModule } from './modules/health/health.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { validateEnv } from './config/validate-env';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: ['.env', '.env.example'],
+      validate: validateEnv,
     }),
     BullModule.forRoot({
       redis: {

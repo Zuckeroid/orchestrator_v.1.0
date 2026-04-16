@@ -1,0 +1,36 @@
+Environment v1.0
+----------------
+
+The application validates environment variables during startup.
+
+Development defaults:
+- NODE_ENV=development
+- DB_SYNCHRONIZE=false
+- DB_MIGRATIONS_RUN=true
+- VPN_PROVIDER=noop
+- VPN_3XUI_TLS_REJECT_UNAUTHORIZED=true
+- PROVISION_CLEANUP_ENABLED=true
+- PROVISION_CLEANUP_CRON="*/15 * * * *"
+
+Production safety rules:
+- DB_SYNCHRONIZE must be false.
+- ADMIN_API_KEY must not be "secret".
+- WEBHOOK_API_KEY must not be "secret".
+- WEBHOOK_SIGNING_SECRET must not be "secret".
+- DATA_ENCRYPTION_KEY must not be "base64-secret" or "secret".
+- BILLING_API_KEY must not be "secret".
+- STORAGE_ACCESS_KEY must not be "access".
+- STORAGE_SECRET_KEY must not be "secret".
+- VPN_3XUI_TLS_REJECT_UNAUTHORIZED=false is not allowed with a real VPN provider in production.
+
+Validation checks:
+- Required DB, Redis, admin, webhook, and encryption variables must be present.
+- Boolean variables must be true or false.
+- Numeric variables must be valid integers in allowed ranges.
+- PROVISION_CLEANUP_CRON must be a 5-field cron expression.
+- VPN_PROVIDER must be noop, 3x-ui, or threexui.
+
+Local files:
+- .env may override .env.example.
+- .env must never be committed.
+- .env.example is safe for development only.
