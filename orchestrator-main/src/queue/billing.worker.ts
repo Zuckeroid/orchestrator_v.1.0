@@ -35,6 +35,14 @@ export class BillingWorker {
     return this.handleBillingEvent(job);
   }
 
+  @Process('cleanup_due_provisions')
+  async handleCleanupDueProvisions(job: Job<{ limit?: number }>) {
+    const limit = Number(job.data.limit ?? process.env.PROVISION_CLEANUP_LIMIT ?? 50);
+    this.logger.log(`Processing due provision cleanup: limit=${limit}`);
+
+    return this.provisioningService.cleanupDueProvisions(limit);
+  }
+
   private async handleBillingEvent(job: Job<BillingEventPayload>) {
     this.logger.log(`Processing billing event: ${job.name}`);
 

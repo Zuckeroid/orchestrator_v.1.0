@@ -64,6 +64,19 @@ export class ProvisionsService {
     });
   }
 
+  async findDueForDeletion(limit = 50): Promise<ProvisionEntity[]> {
+    return this.repository
+      .createQueryBuilder('provision')
+      .where('provision.status IN (:...statuses)', {
+        statuses: ['cancelled', 'suspended'],
+      })
+      .andWhere('provision.delete_after IS NOT NULL')
+      .andWhere('provision.delete_after <= :now', { now: new Date() })
+      .orderBy('provision.delete_after', 'ASC')
+      .take(Math.min(limit, 200))
+      .getMany();
+  }
+
   async findByExternalSubscriptionId(
     externalSubscriptionId: string,
   ): Promise<ProvisionEntity | null> {

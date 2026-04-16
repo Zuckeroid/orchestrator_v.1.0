@@ -152,6 +152,28 @@ Response
 ------------------------------------------------------------
 5. 🖥 Node Management API
 ------------------------------------------------------------
+4.4 POST /provisions/:id/delete-now
+Purpose
+
+Manual final cleanup for a provision:
+- delete VPN client through 3x-ui API
+- delete storage bucket/access through StorageProvider
+- set status = deleted
+- set storageStatus = deleted
+- set deletedAt = now
+- write audit log
+
+Response
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "status": "deleted",
+    "storageStatus": "deleted",
+    "deletedAt": "2026-04-16T00:00:00.000Z"
+  }
+}
+
 5.1 VPN Nodes
 POST /nodes/vpn
 {

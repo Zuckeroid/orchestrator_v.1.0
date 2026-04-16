@@ -1,0 +1,20 @@
+Provision cleanup v1.0
+----------------------
+
+After subscription_cancel / subscription_expired:
+- disable VPN client immediately
+- freeze storage immediately
+- set deleteAfter = now + grace period
+
+Final physical cleanup:
+- periodic cleanup job finds provisions where status in (cancelled, suspended) and deleteAfter <= now
+- deletes VPN client through 3x-ui API
+- deletes storage bucket/access through StorageProvider API
+- sets storageStatus = deleted
+- sets status = deleted
+- sets deletedAt = now
+
+Manual admin operation:
+- POST /api/v1/provisions/:id/delete-now
+- runs the same physical cleanup immediately without waiting for deleteAfter
+- writes audit log action delete_now

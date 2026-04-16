@@ -60,6 +60,48 @@ export class ProvisioningService {
     }
   }
 
+  async deleteProvisionNow(provisionId: string): Promise<ProvisionEntity> {
+    const provision = await this.provisionsService.getById(provisionId);
+    await this.deleteProvisionResources(provision);
+
+    return this.provisionsService.getById(provisionId);
+  }
+
+  async cleanupDueProvisions(limit = 50): Promise<{
+    deleted: number;
+    failed: number;
+    deletedIds: string[];
+    failedIds: string[];
+  }> {
+    const provisions = await this.provisionsService.findDueForDeletion(limit);
+    const deletedIds: string[] = [];
+    const failedIds: string[] = [];
+
+    for (const provision of provisions) {
+      try {
+        await this.deleteProvisionResources(provision);
+        deletedIds.push(provision.id);
+      } catch (error) {
+        failedIds.push(provision.id);
+        await this.provisionsService.updateStatus(provision, provision.status, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.logger.error(
+          `Failed to cleanup provision ${provision.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    return {
+      deleted: deletedIds.length,
+      failed: failedIds.length,
+      deletedIds,
+      failedIds,
+    };
+  }
+
   private async provisionOrRenew(event: BillingEventPayload): Promise<void> {
     this.ensurePaid(event);
 
@@ -273,6 +315,53 @@ export class ProvisioningService {
       event.externalSubscriptionId,
       status,
     );
+  }
+
+  private async deleteProvisionResources(
+    provision: ProvisionEntity,
+  ): Promise<void> {
+    if (provision.status === 'deleted') {
+      return;
+    }
+
+    this.logger.log(
+      `Deleting resources for provision ${provision.id}: ${provision.externalSubscriptionId}`,
+    );
+
+    const shouldReleaseCapacity = provision.status === 'active';
+
+    if (provision.vpnNodeId && provision.vpnLogin) {
+      const vpnNode = await this.vpnNodesService.findById(provision.vpnNodeId);
+      await this.vpnClient.deleteClient(
+        this.toVpnNodeConfig(vpnNode),
+        provision.vpnLogin,
+      );
+    }
+
+    if (provision.storageBackendId && provision.storageBucket) {
+      const storageBackend = await this.storageBackendsService.findById(
+        provision.storageBackendId,
+      );
+      await this.storageProvider.deleteBucketAccess(
+        this.toStorageBackendConfig(storageBackend),
+        provision.storageBucket,
+      );
+    }
+
+    if (shouldReleaseCapacity && provision.vpnNodeId) {
+      await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
+    }
+    if (shouldReleaseCapacity && provision.storageBackendId) {
+      await this.storageBackendsService.decrementLoad(
+        provision.storageBackendId,
+      );
+    }
+
+    await this.provisionsService.updateStatus(provision, 'deleted', {
+      storageStatus: provision.storageBucket ? 'deleted' : provision.storageStatus,
+      deletedAt: new Date(),
+      error: null,
+    });
   }
 
   private async updatePlan(event: BillingEventPayload): Promise<void> {
