@@ -114,7 +114,7 @@ export class ThreeXuiVpnClient implements VpnClient {
       email: this.buildClientEmail(input),
       enable,
       expiryTime: Number(process.env.VPN_3XUI_CLIENT_EXPIRY_TIME ?? 0),
-      flow: process.env.VPN_3XUI_CLIENT_FLOW ?? '',
+      flow: process.env.VPN_3XUI_CLIENT_FLOW ?? 'xtls-rprx-vision',
       limitIp: Math.max(Number(input.limitIp ?? 0), 0),
       reset: 0,
       subId,
