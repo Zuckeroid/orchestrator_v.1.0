@@ -32,11 +32,15 @@ export const DATABASE_ENTITIES = [
         password: config.get<string>('DB_PASS', 'orchestrator'),
         database: config.get<string>('DB_NAME', 'orchestrator'),
         entities: DATABASE_ENTITIES,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        migrationsRun:
+          config.get<string>('DB_MIGRATIONS_RUN', 'false').toLowerCase() ===
+          'true',
         synchronize:
-          config.get<string>('DB_SYNCHRONIZE', 'true').toLowerCase() === 'true',
+          config.get<string>('DB_SYNCHRONIZE', 'false').toLowerCase() ===
+          'true',
       }),
     }),
   ],
 })
 export class DatabaseModule {}
-

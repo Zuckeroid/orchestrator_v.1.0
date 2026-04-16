@@ -1,0 +1,23 @@
+Database migrations v1.0
+------------------------
+
+DB schema is managed by TypeORM migrations.
+
+Default runtime settings:
+- DB_SYNCHRONIZE=false
+- DB_MIGRATIONS_RUN=true
+
+Development commands from orchestrator-main:
+- npm run migration:show
+- npm run migration:run
+- npm run migration:revert
+- npm run migration:generate -- src/database/migrations/Name
+
+Rules:
+- Do not enable DB_SYNCHRONIZE in production.
+- Entity changes must be paired with a migration.
+- InitialSchema1776380000000 represents the current v1.0 schema.
+- The initial migration is safe to run on the existing dev database because it uses IF NOT EXISTS for tables/indexes and checks foreign keys before adding them.
+
+Production note:
+- DB_MIGRATIONS_RUN can be set to false if migrations are applied by a separate deployment step.
