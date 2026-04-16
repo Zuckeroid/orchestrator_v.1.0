@@ -30,6 +30,7 @@ export function validateEnv(config: EnvConfig): EnvConfig {
 
   setDefault(normalized, 'NODE_ENV', 'development');
   setDefault(normalized, 'PORT', '3000');
+  setDefault(normalized, 'ADMIN_UI_ORIGIN', 'http://localhost:5173');
   setDefault(normalized, 'DB_PORT', '5432');
   setDefault(normalized, 'DB_SYNCHRONIZE', 'false');
   setDefault(normalized, 'DB_MIGRATIONS_RUN', 'true');
@@ -74,6 +75,7 @@ export function validateEnv(config: EnvConfig): EnvConfig {
 
   validateEnum(normalized, 'NODE_ENV', ['development', 'test', 'production'], errors);
   validateEnum(normalized, 'VPN_PROVIDER', ['noop', '3x-ui', 'threexui'], errors);
+  validateOrigins(normalized, 'ADMIN_UI_ORIGIN', errors);
   validateCron(normalized, 'PROVISION_CLEANUP_CRON', errors);
   validateProductionSafety(normalized, errors);
 
@@ -88,6 +90,26 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   }
 
   return normalized;
+}
+
+function validateOrigins(config: EnvConfig, key: string, errors: string[]): void {
+  const value = String(config[key]);
+  const origins = value.split(',').map((origin) => origin.trim());
+  if (origins.length === 0 || origins.some((origin) => origin.length === 0)) {
+    errors.push(`${key} must contain one or more origins`);
+    return;
+  }
+
+  for (const origin of origins) {
+    try {
+      const parsed = new URL(origin);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        errors.push(`${key} origin must use http or https: ${origin}`);
+      }
+    } catch {
+      errors.push(`${key} contains invalid origin: ${origin}`);
+    }
+  }
 }
 
 function setDefault(config: EnvConfig, key: string, value: string): void {

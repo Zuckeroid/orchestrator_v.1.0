@@ -1,0 +1,52 @@
+Admin UI v1.0
+-------------
+
+Location:
+- orchestrator-main/admin-ui
+
+Stack:
+- React
+- Vite
+- TypeScript
+
+Development:
+- Backend API: http://localhost:3000/api/v1
+- Admin UI: http://localhost:5173
+- Vite proxies /api/v1 to http://localhost:3000
+
+Commands from orchestrator-main:
+- npm run admin:dev
+- npm run admin:build
+
+Login/settings:
+- API base URL default: /api/v1
+- Admin key is stored in browser localStorage.
+- Actor is sent as X-Admin-Actor.
+
+Implemented screens:
+- Dashboard
+- Plans
+- VPN Nodes
+- Provisions
+- Events
+- Audit
+
+Implemented actions:
+- create plan
+- add VPN node
+- disable VPN node
+- delete provision now
+- refresh dashboard/state
+
+Backend integration:
+- Uses X-Admin-Api-Key
+- Uses X-Admin-Actor
+- Uses X-Request-Id per request
+- Backend CORS allows ADMIN_UI_ORIGIN, default http://localhost:5173
+
+v1.0 scope:
+- Operator control panel for the existing Admin API.
+- No multi-user RBAC.
+- No billing cockpit.
+- No storage file browser.
+- No node migration UI.

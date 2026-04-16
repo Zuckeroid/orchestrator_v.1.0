@@ -7,6 +7,21 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
   });
+  app.enableCors({
+    origin: (process.env.ADMIN_UI_ORIGIN ?? 'http://localhost:5173')
+      .split(',')
+      .map((origin) => origin.trim()),
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'X-Admin-Api-Key',
+      'X-Admin-Actor',
+      'X-Request-Id',
+      'x-api-key',
+      'x-timestamp',
+      'x-signature',
+    ],
+  });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
     new ValidationPipe({

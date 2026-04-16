@@ -9,7 +9,9 @@
     "migration:generate": "npm run typeorm -- migration:generate",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
-    "migration:show": "npm run typeorm -- migration:show"
+    "migration:show": "npm run typeorm -- migration:show",
+    "admin:dev": "npm --prefix admin-ui run dev",
+    "admin:build": "npm --prefix admin-ui run build"
   },
   "dependencies": {
     "@nestjs/bull": "^10.2.3",
