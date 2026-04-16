@@ -1,0 +1,338 @@
+DATABASE.md — SaaS Infrastructure Orchestrator (v1.0)
+-------------------------------------------------------------
+1. 🎯 Общие принципы
+-------------------------------------------------------------
+📌 База данных: PostgreSQL
+Основные требования:
+идемпотентность (через external IDs)
+консистентность нагрузки
+масштабируемость
+быстрые выборки по статусам
+возможность аудита
+-------------------------------------------------------------
+2. 🧩 Основные таблицы
+-------------------------------------------------------------
+2.1 📦 provisions (главная таблица)
+-------------------------------------------------------------
+provisions
+Назначение:
+Хранит состояние provisioning пользователя
+
+Поля:
+id                  UUID PK
+
+external_user_id    TEXT NOT NULL
+external_subscription_id TEXT NOT NULL
+external_order_id   TEXT
+last_external_payment_id TEXT
+
+email               TEXT NOT NULL
+
+plan_id             UUID
+
+vpn_node_id         UUID
+storage_backend_id  UUID
+
+vpn_login           TEXT
+vpn_password        TEXT
+subscription_link   TEXT
+
+storage_bucket      TEXT
+storage_credentials_encrypted JSONB
+storage_status      TEXT DEFAULT 'none'
+delete_after        TIMESTAMP
+
+status              TEXT NOT NULL
+error               TEXT
+
+suspended_at        TIMESTAMP
+deleted_at          TIMESTAMP
+created_at          TIMESTAMP
+updated_at          TIMESTAMP
+Индексы:
+UNIQUE (external_subscription_id)
+INDEX (external_user_id)
+INDEX (status)
+INDEX (vpn_node_id)
+INDEX (storage_backend_id)
+-------------------------------------------------------------
+📌 Статусы:
+-------------------------------------------------------------
+pending
+provisioning
+active
+failed
+suspended
+cancelled
+deleted
+-------------------------------------------------------------
+📌 storage_credentials_encrypted:
+Хранит credentials только в зашифрованном виде.
+Ключ шифрования берётся из DATA_ENCRYPTION_KEY / secret manager.
+Если storage provider позволяет восстановить доступ по bucket/id, credentials можно не хранить и оставить NULL.
+
+📌 storage_status:
+none
+active
+frozen
+deleted
+-------------------------------------------------------------
+2.2 🖥 vpn_nodes
+-------------------------------------------------------------
+vpn_nodes
+Поля:
+id              UUID PK
+
+name            TEXT
+host            TEXT NOT NULL
+api_key         TEXT NOT NULL
+
+api_version     TEXT
+inbound_id      INTEGER
+type            TEXT DEFAULT '3x-ui'
+status          TEXT DEFAULT 'active'
+last_error      TEXT
+
+capacity        INTEGER NOT NULL
+current_load    INTEGER DEFAULT 0
+
+is_active       BOOLEAN DEFAULT true
+
+created_at      TIMESTAMP
+updated_at      TIMESTAMP
+Индексы:
+INDEX (is_active)
+INDEX (status)
+INDEX (current_load)
+-------------------------------------------------------------
+2.3 💾 storage_backends
+-------------------------------------------------------------
+storage_backends
+Поля:
+id              UUID PK
+
+name            TEXT
+endpoint        TEXT NOT NULL
+api_key         TEXT NOT NULL
+secret_key      TEXT
+region          TEXT
+provider        TEXT DEFAULT 'minio'
+bucket_prefix   TEXT
+
+capacity        INTEGER NOT NULL
+current_load    INTEGER DEFAULT 0
+
+is_active       BOOLEAN DEFAULT true
+
+created_at      TIMESTAMP
+updated_at      TIMESTAMP
+Индексы:
+INDEX (is_active)
+INDEX (current_load)
+-------------------------------------------------------------
+📌 Storage backend:
+- S3-compatible
+- default v1: MinIO
+- alternative: Garage
+- Orchestrator управляет bucket / access / policy / quota
+- Orchestrator не хранит файлы и не реализует object storage
+-------------------------------------------------------------
+2.4 📦 plans
+-------------------------------------------------------------
+plans
+Назначение:
+Копия тарифов из Billing Provider
+Поля:
+id                  UUID PK
+
+external_plan_id    TEXT UNIQUE
+billing_provider    TEXT
+
+name                TEXT
+
+vpn_enabled         BOOLEAN DEFAULT true
+storage_enabled     BOOLEAN DEFAULT true
+
+max_devices         INTEGER
+storage_size        INTEGER
+
+created_at          TIMESTAMP
+updated_at          TIMESTAMP
+📌 max_devices мапится в 3x-ui client.limitIp.
+NULL или 0 означает отсутствие IP limit, если тариф не задаёт другое правило.
+-------------------------------------------------------------
+2.5 📊 processed_events / billing_events
+-------------------------------------------------------------
+processed_events
+Назначение:
+Идемпотентность webhook и аудит событий Billing Provider.
+Provision НЕ уникален по external_payment_id, потому что одна подписка может иметь много платежей.
+
+Поля:
+id                       UUID PK
+
+event_id                 TEXT NOT NULL
+event_type               TEXT NOT NULL
+
+external_user_id         TEXT
+external_subscription_id TEXT
+external_order_id        TEXT
+external_payment_id      TEXT
+external_plan_id         TEXT
+
+payload                  JSONB NOT NULL
+status                   TEXT NOT NULL
+error                    TEXT
+
+received_at              TIMESTAMP
+processed_at             TIMESTAMP
+
+Индексы:
+UNIQUE (event_id)
+UNIQUE (event_type, external_payment_id) WHERE external_payment_id IS NOT NULL
+INDEX (external_subscription_id)
+INDEX (status)
+-------------------------------------------------------------
+2.6 📊 jobs (обязательно)
+-------------------------------------------------------------
+jobs
+Назначение:
+
+Аудит задач и ручной retry (дополнение к Bull)
+
+Поля:
+id              UUID PK
+
+type            TEXT
+payload         JSONB
+processed_event_id UUID
+
+status          TEXT
+error           TEXT
+
+attempts        INTEGER
+processed_at    TIMESTAMP
+
+created_at      TIMESTAMP
+-------------------------------------------------------------
+2.7 📜 audit_logs
+-------------------------------------------------------------
+audit_logs
+Назначение:
+История действий (очень важно для продакшена)
+
+Поля:
+id          UUID PK
+
+entity_type TEXT
+entity_id   UUID
+
+action      TEXT
+data        JSONB
+
+created_at  TIMESTAMP
+-------------------------------------------------------------
+2.8 📈 metrics (опционально)
+-------------------------------------------------------------
+metrics
+id          UUID PK
+
+name        TEXT
+value       FLOAT
+
+created_at  TIMESTAMP
+-------------------------------------------------------------
+3. 🔗 Связи (Relations)
+-------------------------------------------------------------
+provisions.plan_id → plans.id
+
+provisions.vpn_node_id → vpn_nodes.id
+provisions.storage_backend_id → storage_backends.id
+jobs.processed_event_id → processed_events.id
+-------------------------------------------------------------
+3.1 🔁 Migration readiness (v2)
+-------------------------------------------------------------
+Автоматическая миграция пользователей между VPN нодами не входит в v1.
+Но БД должна позволять безопасно добавить её в v2.
+
+vpn_nodes.status:
+active      - участвует в provisioning
+inactive    - временно недоступна
+blocked     - заблокирована / недоступна пользователям
+draining    - не принимает новых пользователей, существующих нужно перенести позже
+
+Правило v1:
+- для выбора новых пользователей подходят только is_active = true AND status = 'active'
+- Provision остаётся привязан к старой vpn_node_id до ручного действия или v2 migration job
+- Admin UI должен уметь показать affected provisions по vpn_node_id
+-------------------------------------------------------------
+4. ⚖️ Консистентность нагрузки
+-------------------------------------------------------------
+ВАЖНО:
+current_load обновляется ТОЛЬКО:
+- при успешном provisioning
+- при удалении
+- при freeze/suspend ресурса, если ресурс перестал занимать активную capacity
+❗ Рекомендуется:
+
+Не держать DB transaction во время внешних API вызовов к 3x-ui / Storage.
+Финальное изменение нагрузки выполнять короткой атомарной операцией:
+
+BEGIN;
+
+UPDATE vpn_nodes
+SET current_load = current_load + 1
+WHERE id = $1
+  AND is_active = true
+  AND status = 'active'
+  AND current_load < capacity;
+
+INSERT INTO provisions ... / UPDATE provisions ...
+
+COMMIT;
+
+Если UPDATE не изменил строку:
+- удалить только что созданный внешний ресурс
+- выбрать другую ноду
+- повторить provisioning job
+-------------------------------------------------------------
+5. 🔐 Идемпотентность
+-------------------------------------------------------------
+processed_events.event_id UNIQUE
+Поведение:
+INSERT processed_event → если conflict → вернуть 200 OK и не выполнять provisioning повторно
+Provision ищется по external_subscription_id
+Продление подписки создаёт новое processed_event, но обновляет существующий Provision
+-------------------------------------------------------------
+6. ⚡ Оптимизация
+-------------------------------------------------------------
+Частые запросы:
+WHERE status = 'active'
+WHERE external_user_id = ?
+WHERE external_subscription_id = ?
+WHERE current_load < capacity
+
+👉 под них уже есть индексы
+-------------------------------------------------------------
+7. 🧠 Масштабирование
+-------------------------------------------------------------
+Когда вырастешь:
+1. Read replicas
+- чтение provision → replica
+- запись → master
+2. Шардирование (позже)
+по external_user_id
+-------------------------------------------------------------
+8. 🚨 Что НЕ делаем
+-------------------------------------------------------------
+❌ Не храним пользователей (это Billing Provider)
+❌ Не дублируем billing
+❌ Не делаем сложные связи
+❌ Не реализуем raw object storage внутри Orchestrator
+-------------------------------------------------------------
+9. 💡 Дополнительно (рекомендуется)
+-------------------------------------------------------------
+Enum вместо TEXT
+
+Можно позже заменить:
+status ENUM

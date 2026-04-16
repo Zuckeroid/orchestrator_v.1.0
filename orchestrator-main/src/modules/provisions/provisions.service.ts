@@ -1,0 +1,166 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { BillingEventPayload } from '../../common/types/billing-event.type';
+import {
+  ProvisionEntity,
+  ProvisionStatus,
+  StorageStatus,
+} from '../../database/entities/provision.entity';
+
+@Injectable()
+export class ProvisionsService {
+  constructor(
+    @InjectRepository(ProvisionEntity)
+    private readonly repository: Repository<ProvisionEntity>,
+  ) {}
+
+  async list(filters: {
+    status?: string;
+    externalUserId?: string;
+    limit?: number;
+    page?: number;
+  }): Promise<ProvisionEntity[]> {
+    const query = this.repository
+      .createQueryBuilder('provision')
+      .orderBy('provision.created_at', 'DESC');
+
+    if (filters.status) {
+      query.andWhere('provision.status = :status', { status: filters.status });
+    }
+
+    if (filters.externalUserId) {
+      query.andWhere('provision.external_user_id = :externalUserId', {
+        externalUserId: filters.externalUserId,
+      });
+    }
+
+    const limit = Math.min(filters.limit ?? 50, 200);
+    const page = Math.max(filters.page ?? 1, 1);
+
+    return query
+      .take(limit)
+      .skip((page - 1) * limit)
+      .getMany();
+  }
+
+  async getById(id: string): Promise<ProvisionEntity> {
+    const provision = await this.repository.findOneBy({ id });
+    if (!provision) {
+      throw new NotFoundException(`Provision not found: ${id}`);
+    }
+
+    return provision;
+  }
+
+  async findAffectedByVpnNode(vpnNodeId: string): Promise<ProvisionEntity[]> {
+    return this.repository.find({
+      where: {
+        vpnNodeId,
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+  }
+
+  async findByExternalSubscriptionId(
+    externalSubscriptionId: string,
+  ): Promise<ProvisionEntity | null> {
+    return this.repository.findOneBy({ externalSubscriptionId });
+  }
+
+  async getOrCreateFromEvent(
+    event: BillingEventPayload,
+  ): Promise<ProvisionEntity> {
+    const existing = await this.findByExternalSubscriptionId(
+      event.externalSubscriptionId,
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const provision = this.repository.create({
+      externalUserId: event.externalUserId,
+      externalSubscriptionId: event.externalSubscriptionId,
+      externalOrderId: event.externalOrderId,
+      lastExternalPaymentId: event.externalPaymentId,
+      email: event.email,
+      status: 'pending',
+      storageStatus: 'none',
+    });
+
+    return this.repository.save(provision);
+  }
+
+  async markProvisioning(provision: ProvisionEntity): Promise<void> {
+    await this.repository.update(
+      { id: provision.id },
+      {
+        status: 'provisioning',
+        error: null,
+      },
+    );
+  }
+
+  async markActive(
+    provision: ProvisionEntity,
+    patch: {
+      planId?: string | null;
+      lastExternalPaymentId?: string | null;
+      vpnNodeId?: string | null;
+      vpnLogin?: string | null;
+      vpnPassword?: string | null;
+      subscriptionLink?: string | null;
+      storageBackendId?: string | null;
+      storageBucket?: string | null;
+      storageCredentialsEncrypted?: Record<string, unknown> | null;
+    },
+  ): Promise<void> {
+    const update = {
+      ...patch,
+      status: 'active',
+      storageStatus: patch.storageBucket ? 'active' : provision.storageStatus,
+      error: null,
+    };
+
+    await this.repository.update(
+      { id: provision.id },
+      update as any,
+    );
+  }
+
+  async updateStatus(
+    provision: ProvisionEntity,
+    status: ProvisionStatus,
+    patch: {
+      storageStatus?: StorageStatus;
+      deleteAfter?: Date | null;
+      error?: string | null;
+      suspendedAt?: Date | null;
+      deletedAt?: Date | null;
+    } = {},
+  ): Promise<void> {
+    await this.repository.update(
+      { id: provision.id },
+      {
+        status,
+        ...patch,
+      },
+    );
+  }
+
+  async markFailed(provision: ProvisionEntity, error: string): Promise<void> {
+    await this.updateStatus(provision, 'failed', { error });
+  }
+
+  async updatePlan(provision: ProvisionEntity, planId: string | null): Promise<void> {
+    await this.repository.update(
+      { id: provision.id },
+      {
+        planId,
+        error: null,
+      },
+    );
+  }
+}

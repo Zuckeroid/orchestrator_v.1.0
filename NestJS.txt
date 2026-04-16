@@ -1,0 +1,314 @@
+PROJECT STRUCTURE — NestJS (Production v1.0)
+-------------------------------------------------------------
+🧠 Главный принцип
+Feature-based + Core + Infrastructure
+📦 Общая структура
+src/
+│
+├── main.ts
+├── app.module.ts
+│
+├── config/
+├── common/
+├── database/
+│
+├── modules/
+│   ├── webhook/
+│   ├── queue/
+│   ├── provisioning/
+│   ├── nodes/
+│   ├── plans/
+│   ├── health/
+│   ├── metrics/
+│
+├── integrations/
+│   ├── billing/
+│   ├── vpn/
+│   ├── storage/
+│
+└── workers/
+    └── payment/
+-------------------------------------------------------------
+1. ⚙️ Core файлы
+-------------------------------------------------------------
+main.ts
+bootstrap()
+запуск приложения
+глобальные middleware
+validation pipe
+logging
+app.module.ts
+Root module
+
+Импортирует ВСЕ модули:
+
+- ConfigModule
+- TypeOrmModule
+- BullModule
+- Все feature modules
+-------------------------------------------------------------
+2. ⚙️ config/
+-------------------------------------------------------------
+config/
+├── app.config.ts
+├── database.config.ts
+├── redis.config.ts
+├── auth.config.ts
+Назначение:
+централизованные env настройки
+типизация конфигов
+-------------------------------------------------------------
+3. 🧱 common/
+-------------------------------------------------------------
+common/
+├── decorators/
+├── guards/
+├── interceptors/
+├── filters/
+├── utils/
+├── types/
+Примеры:
+AuthGuard
+ApiKeyGuard
+ExceptionFilter
+LoggerInterceptor
+-------------------------------------------------------------
+4. 🗄 database/
+-------------------------------------------------------------
+database/
+├── entities/
+│   ├── provision.entity.ts
+│   ├── vpn-node.entity.ts
+│   ├── storage-node.entity.ts
+│   ├── plan.entity.ts
+│   ├── processed-event.entity.ts
+│   ├── job.entity.ts
+│   ├── audit-log.entity.ts
+│
+├── migrations/
+├── subscribers/
+Важно:
+
+❗ Entities только тут
+❗ Никакой логики внутри
+-------------------------------------------------------------
+5. 📦 modules/ (бизнес-логика)
+-------------------------------------------------------------
+5.1 webhook/
+-------------------------------------------------------------
+webhook/
+├── webhook.module.ts
+├── webhook.controller.ts
+├── webhook.service.ts
+├── dto/
+│   └── webhook.dto.ts
+Ответственность:
+принять webhook
+валидировать
+отправить в очередь
+
+❗ Никакой бизнес-логики
+-------------------------------------------------------------
+5.2 queue/
+-------------------------------------------------------------
+queue/
+├── queue.module.ts
+├── queue.service.ts
+Ответственность:
+добавление job
+регистрация очередей
+конфиг Bull
+
+❗ Queue module НЕ содержит business processor.
+Реальные processors живут в workers/.
+-------------------------------------------------------------
+5.3 provisioning/ (СЕРДЦЕ СИСТЕМЫ)
+-------------------------------------------------------------
+provisioning/
+├── provisioning.module.ts
+├── provisioning.service.ts
+├── provisioning.repository.ts
+├── strategies/
+│   ├── vpn.strategy.ts
+│   ├── storage.strategy.ts
+Ответственность:
+вся логика provisioning
+sticky allocation
+балансировка
+lifecycle
+-------------------------------------------------------------
+5.4 nodes/
+-------------------------------------------------------------
+nodes/
+├── nodes.module.ts
+│
+├── vpn/
+│   ├── vpn-nodes.controller.ts
+│   ├── vpn-nodes.service.ts
+│
+├── storage/
+│   ├── storage-backends.controller.ts
+│   ├── storage-backends.service.ts
+Ответственность:
+CRUD storage backends
+управление capacity
+health state
+-------------------------------------------------------------
+5.5 plans/
+-------------------------------------------------------------
+plans/
+├── plans.module.ts
+├── plans.service.ts
+Ответственность:
+хранение тарифов
+синхронизация с Billing Provider
+-------------------------------------------------------------
+5.6 health/
+-------------------------------------------------------------
+health/
+├── health.module.ts
+├── health.controller.ts
+├── health.service.ts
+Ответственность:
+состояние системы
+проверка Redis / DB
+-------------------------------------------------------------
+5.7 metrics/
+-------------------------------------------------------------
+metrics/
+├── metrics.module.ts
+├── metrics.service.ts
+-------------------------------------------------------------
+6. 🔗 integrations/
+-------------------------------------------------------------
+6.1 billing/
+-------------------------------------------------------------
+integrations/billing/
+├── billing.module.ts
+├── billing.service.ts
+├── billing-provider.interface.ts
+├── providers/
+│   ├── fossbilling.provider.ts
+│   ├── billmanager.provider.ts
+Ответственность:
+отправка данных обратно в billing
+обновление подписки
+
+Billing Provider candidates:
+- FossBilling + custom YooKassa payment adapter
+- BILLmanager / другой provider с готовой YooKassa интеграцией
+
+❗ Core logic зависит от BillingProvider interface, а не от конкретного продукта.
+❗ Custom YooKassa adapter для FossBilling живёт на стороне billing и не является частью core Orchestrator.
+-------------------------------------------------------------
+6.2 vpn/
+-------------------------------------------------------------
+integrations/vpn/
+├── vpn.module.ts
+├── vpn.service.ts
+├── vpn.client.ts
+Назначение:
+удалённое управление 3x-ui нодами напрямую через API панели.
+Отдельный агент / adapter service на VPN ноды не устанавливается.
+-------------------------------------------------------------
+6.3 storage/
+-------------------------------------------------------------
+integrations/storage/
+├── storage.module.ts
+├── storage.service.ts
+├── storage.client.ts
+├── s3-storage-provider.interface.ts
+Назначение:
+управление S3-compatible storage backend:
+- MinIO как default v1 backend
+- Garage как alternative backend
+- bucket / access / policy / quota
+-------------------------------------------------------------
+7. ⚙️ workers/
+-------------------------------------------------------------
+payment worker
+workers/payment/
+├── payment.processor.ts
+├── payment.service.ts
+Ответственность:
+обработка queue jobs
+orchestration flow
+
+❗ ВАЖНО:
+
+Worker НЕ содержит бизнес-логики
+→ вызывает provisioning.service
+-------------------------------------------------------------
+8. 🧠 Поток выполнения (mapping на структуру)
+-------------------------------------------------------------
+WebhookController
+    ↓
+WebhookService
+    ↓
+QueueService
+    ↓
+Bull Queue
+    ↓
+PaymentProcessor
+    ↓
+ProvisioningService
+    ↓
+Integrations (VPN / Storage)
+    ↓
+Database
+    ↓
+BillingService
+-------------------------------------------------------------
+9. 🧪 Тесты
+-------------------------------------------------------------
+test/
+├── unit/
+├── e2e/
+-------------------------------------------------------------
+10. 🔐 ENV структура
+-------------------------------------------------------------
+# app
+PORT=3000
+
+# db
+DB_HOST=db
+DB_PORT=5432
+DB_USER=orchestrator
+DB_PASS=orchestrator
+DB_NAME=orchestrator
+
+# redis
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+# security
+WEBHOOK_API_KEY=secret
+WEBHOOK_SIGNING_SECRET=secret
+WEBHOOK_SIGNATURE_TOLERANCE_SECONDS=300
+DATA_ENCRYPTION_KEY=base64-secret
+
+# billing
+BILLING_PROVIDER=fossbilling
+BILLING_API_URL=https://billing.example.com
+BILLING_API_KEY=secret
+
+# nodes
+VPN_TIMEOUT=5000
+STORAGE_TIMEOUT=5000
+
+# storage
+STORAGE_PROVIDER=minio
+STORAGE_ENDPOINT=https://s3.example.com
+STORAGE_REGION=us-east-1
+STORAGE_ACCESS_KEY=access
+STORAGE_SECRET_KEY=secret
+-------------------------------------------------------------
+-------------------------------------------------------------
+🚨 Главные правила (очень важно)
+-------------------------------------------------------------
+-------------------------------------------------------------
+❗ 1. Никакой логики в контроллерах
+❗ 2. Worker не содержит бизнес-логики
+❗ 3. Вся логика → provisioning.service
+❗ 4. Интеграции изолированы
+❗ 5. Модули не знают друг о друге напрямую

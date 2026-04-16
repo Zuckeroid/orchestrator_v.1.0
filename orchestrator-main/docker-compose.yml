@@ -1,0 +1,29 @@
+services:
+  api:
+    build: .
+    env_file:
+      - .env.example
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+      - db
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  db:
+    image: postgres:16
+    container_name: orchestrator-db
+    environment:
+      POSTGRES_USER: orchestrator
+      POSTGRES_PASSWORD: orchestrator
+      POSTGRES_DB: orchestrator
+    ports:
+      - "5432:5432"

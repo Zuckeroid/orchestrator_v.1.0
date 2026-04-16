@@ -1,0 +1,331 @@
+API.md — SaaS Infrastructure Orchestrator (v1.0)
+------------------------------------------------------------
+1. 🎯 Общие принципы
+------------------------------------------------------------
+📌 Base URL
+/api/v1
+📌 Формат
+JSON only
+UTF-8
+📌 Успешный ответ
+{
+  "success": true,
+  "data": {}
+}
+📌 Ошибка
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human readable message"
+  }
+}
+📌 HTTP статусы
+200 OK
+201 Created
+400 Bad Request
+401 Unauthorized
+403 Forbidden
+404 Not Found
+409 Conflict
+500 Internal Error
+------------------------------------------------------------
+2. 🔐 Аутентификация
+------------------------------------------------------------
+2.1 Webhook (Billing Provider → Orchestrator)
+Header: X-API-KEY
+Header: X-Timestamp
+Header: X-Signature
+2.2 Admin UI
+JWT Bearer Token
+2.3 VPN nodes
+Orchestrator управляет 3x-ui напрямую через API панели.
+Отдельного VPN agent нет, потому что agent не устанавливается.
+------------------------------------------------------------
+3. 🔔 Webhook API (вход в систему)
+------------------------------------------------------------
+3.1 POST /webhook/billing
+📌 Назначение
+
+Получение событий от биллинга
+
+Headers
+Content-Type: application/json
+X-API-KEY: <secret>
+X-Timestamp: <unix timestamp>
+X-Signature: <hmac-sha256>
+Payload
+{
+  "event": "payment_paid",
+  "eventId": "evt_001",
+  "externalUserId": "user_123",
+  "externalSubscriptionId": "sub_123",
+  "externalOrderId": "order_456",
+  "externalPaymentId": "payment_789",
+  "email": "test@test.com",
+  "externalPlanId": "plan_basic",
+  "status": "paid"
+}
+Поддерживаемые события
+payment_paid
+subscription_cancel
+subscription_expired
+plan_changed
+Правила payload:
+eventId обязателен для всех событий и используется как idempotency key.
+externalSubscriptionId обязателен для всех событий.
+externalPaymentId обязателен для payment_paid и опционален для cancel/expired.
+externalPlanId обязателен для payment_paid и plan_changed.
+Response
+{
+  "success": true,
+  "data": {
+    "queued": true
+  }
+}
+Duplicate Response
+{
+  "success": true,
+  "data": {
+    "queued": false,
+    "duplicate": true
+  }
+}
+Ошибки
+401 INVALID_API_KEY
+401 INVALID_SIGNATURE
+400 INVALID_PAYLOAD
+409 CONFLICT
+Повторный webhook с уже обработанным eventId возвращает 200 OK и queued=false.
+4. ⚙️ Provision API (Admin UI)
+4.1 GET /provisions
+Query params
+status
+externalUserId
+page
+limit
+Response
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "email": "test@test.com",
+      "externalSubscriptionId": "sub_123",
+      "status": "active",
+      "vpnNodeId": "uuid",
+      "storageBackendId": "uuid",
+      "createdAt": "..."
+    }
+  ]
+}
+4.2 GET /provisions/:id
+Response
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "email": "test@test.com",
+    "externalSubscriptionId": "sub_123",
+    "status": "active",
+    "vpnLogin": "...",
+    "vpnPassword": "...",
+    "subscriptionLink": "...",
+    "storageBucket": "...",
+    "storageStatus": "active",
+    "error": null
+  }
+}
+4.3 POST /provisions/:id/retry
+Назначение
+
+Ручной retry provisioning
+
+Response
+{
+  "success": true,
+  "data": {
+    "queued": true
+  }
+}
+
+------------------------------------------------------------
+5. 🖥 Node Management API
+------------------------------------------------------------
+5.1 VPN Nodes
+POST /nodes/vpn
+{
+  "name": "node-1",
+  "host": "http://1.2.3.4:2053",
+  "apiKey": "secret",
+  "inboundId": 1,
+  "capacity": 100
+}
+GET /nodes/vpn
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "name": "node-1",
+      "currentLoad": 20,
+      "capacity": 100,
+      "isActive": true,
+      "status": "active"
+    }
+  ]
+}
+PATCH /nodes/vpn/:id
+{
+  "isActive": false,
+  "status": "draining",
+  "capacity": 200
+}
+DELETE /nodes/vpn/:id
+soft delete / disable
+GET /nodes/vpn/:id/affected-provisions
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "email": "test@test.com",
+      "externalSubscriptionId": "sub_123",
+      "status": "active",
+      "subscriptionLink": "https://..."
+    }
+  ]
+}
+5.2 Storage Backends
+
+(S3-compatible backend: MinIO default, Garage alternative)
+
+6. 🔁 Queue / Jobs API
+6.1 GET /jobs
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "type": "payment_paid",
+      "status": "completed",
+      "attempts": 1,
+      "processedEventId": "uuid"
+    }
+  ]
+}
+6.2 GET /jobs/:id
+{
+  "success": true,
+  "data": {
+    "payload": {},
+    "status": "failed",
+    "error": "..."
+  }
+}
+7. ❤️ Health API
+7.1 GET /health
+{
+  "success": true,
+  "data": {
+    "status": "ok",
+    "redis": "ok",
+    "db": "ok"
+  }
+}
+7.2 GET /nodes/health
+{
+  "success": true,
+  "data": [
+    {
+      "nodeId": "uuid",
+      "status": "ok",
+      "latency": 120
+    }
+  ]
+}
+8. 📊 Metrics API
+GET /metrics
+{
+  "success": true,
+  "data": {
+    "totalProvisioned": 1200,
+    "activeUsers": 980,
+    "failedJobs": 12
+  }
+}
+9. 🔗 3x-ui Direct API Integration
+Оркестратор управляет VPN нодами удалённо напрямую через API 3x-ui.
+На VPN ноды не устанавливается отдельный adapter / agent.
+Хранимые в vpn_nodes поля host, apiKey, apiVersion, inboundId используются для вызовов 3x-ui API.
+
+9.1 Internal VPN client contract (не публичный HTTP endpoint)
+createClient(vpnNode, provision, plan)
+{
+  "email": "test@test.com",
+  "externalSubscriptionId": "sub_123",
+  "inboundId": 1,
+  "limitIp": 3,
+  "enable": true
+}
+Response
+{
+  "login": "user123",
+  "password": "pass123",
+  "subscriptionLink": "https://..."
+}
+deleteClient(vpnNode, login)
+updateClient(vpnNode, login, { "limitIp": 5, "enable": true })
+
+9.2 Internal S3 StorageProvider contract
+Storage backend is S3-compatible.
+Default v1 backend: MinIO.
+Alternative backend: Garage.
+
+createBucketAccess(storageBackend, provision, plan)
+{
+  "email": "test@test.com",
+  "externalSubscriptionId": "sub_123",
+  "bucket": "user-bucket",
+  "quota": 10737418240
+}
+Response
+{
+  "bucket": "user-bucket",
+  "credentials": {}
+}
+freezeBucketAccess(storageBackend, bucket)
+deleteBucketAccess(storageBackend, bucket)
+10. 🚨 Ошибки (стандартизированные)
+Коды:
+INVALID_API_KEY
+INVALID_PAYLOAD
+NODE_UNAVAILABLE
+CAPACITY_EXCEEDED
+PROVISION_FAILED
+NOT_FOUND
+CONFLICT
+INTERNAL_ERROR
+11. 🧠 Rate Limiting
+/webhook → 100 req/sec
+/admin → 20 req/sec
+12. 🔐 Безопасность
+HTTPS only
+API keys хранятся в env
+WEBHOOK_SIGNING_SECRET хранится в env
+DATA_ENCRYPTION_KEY используется для storage credentials
+Webhook signature: HMAC-SHA256 raw body + timestamp
+Replay window: 5 минут
+JWT с expiration
+логирование всех запросов
+13. 🧩 Provider Decisions
+Billing Provider:
+- v1 interface: BillingProvider
+- candidate A: FossBilling + custom YooKassa adapter
+- candidate B: BILLmanager / другой provider с готовой YooKassa
+Custom YooKassa adapter для FossBilling относится к billing side, а не к core Orchestrator API.
+
+Storage Provider:
+- v1 interface: S3 StorageProvider
+- default: MinIO
+- alternative: Garage

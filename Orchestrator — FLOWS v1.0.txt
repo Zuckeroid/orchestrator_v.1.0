@@ -1,0 +1,309 @@
+FLOWS.md — SaaS Infrastructure Orchestrator (v1.0)
+---------------------------------------------------------------
+1. 💰 FLOW: Успешная оплата (payment_paid)
+---------------------------------------------------------------
+🎯 Цель
+	- Создать инфраструктуру и выдать доступ пользователю
+---------------------------------------------------------------
+🔄 Последовательность
+1. Billing Provider → webhook → Orchestrator
+
+	payload:
+	- eventId
+	- externalUserId
+	- externalSubscriptionId
+	- email
+	- externalOrderId
+	- externalPaymentId
+	- externalPlanId
+	- status = paid
+📌 externalSubscriptionId обязателен для всех billing events.
+📌 externalPaymentId уникален только для платежей и не используется как ID Provision.
+🧠 Orchestrator
+2. Webhook:
+	- валидирует подпись
+	- валидирует payload
+	- отправляет job → queue
+⚙️ Worker
+3. Получает job
+
+4. Проверяет idempotency:
+   IF eventId уже обработан → вернуть 200 OK и STOP
+
+5. Ищет Provision:
+   - по externalSubscriptionId
+   IF найден → reuse (sticky)
+   ELSE → создать новый (status = pending)
+
+6. Проверяет план:
+   - найти Plan по externalPlanId
+   - какие ресурсы нужны (vpn/storage)
+⚖️ Выбор нод
+7. Выбрать VPN node:
+   - isActive = true
+   - status = active
+   - currentLoad < capacity
+   - min(currentLoad)
+
+8. Выбрать S3 Storage backend:
+   - isActive = true
+   - currentLoad < capacity
+   - default provider = MinIO
+   - alternative provider = Garage
+🛠 Provisioning
+9. Создать VPN пользователя:
+   → передать настройки тарифа:
+      - limitIp = plan.maxDevices
+   → получить:
+      - login
+      - password
+      - subscriptionLink
+
+10. Создать Storage:
+   → получить:
+      - bucket / credentials
+   → через S3 StorageProvider interface
+   → default backend: MinIO
+💾 Сохранение
+11. Обновить Provision:
+   - vpn данные
+   - storage данные
+   - nodeId
+   - status = active
+   - currentLoad++ только для успешно созданных активных ресурсов
+   - сохранить processed_event = completed
+🔗 Обратная интеграция
+12. Orchestrator → BillingProvider API
+
+обновить:
+- subscription link
+- статус услуги
+📊 Логи
+13. Логировать:
+- success
+- время provisioning
+---------------------------------------------------------------
+2. 🔁 FLOW: Повторный webhook (идемпотентность)
+---------------------------------------------------------------
+IF eventId уже есть в processed_events:
+→ игнорировать
+→ вернуть 200 OK
+---------------------------------------------------------------
+3. ❌ FLOW: Ошибка provisioning
+---------------------------------------------------------------
+Возможные ошибки:
+VPN node недоступна
+S3 Storage backend ошибка
+таймаут
+Поведение:
+1. retry (до 3 раз)
+
+2. если не удалось:
+   - status = failed
+   - сохранить error
+   - уменьшить load ноды только если currentLoad уже был увеличен
+   - сохранить processed_event = failed
+📌 Важно
+частично созданные ресурсы:
+→ удалить (rollback)
+---------------------------------------------------------------
+4. 🔁 FLOW: Retry (ручной)
+---------------------------------------------------------------
+Admin UI:
+→ нажимает "Retry"
+
+→ создаётся job:
+   type = manual_retry
+Worker:
+→ повторяет provisioning
+→ использует те же ноды (sticky)
+---------------------------------------------------------------
+5. ❌ FLOW: Отмена подписки (cancel)
+---------------------------------------------------------------
+Триггер:
+Billing Provider → webhook → subscription_cancel
+Worker:
+1. Найти Provision
+
+2. Удалить VPN:
+   → напрямую через 3x-ui API
+
+3. Storage НЕ удалять сразу:
+   → freeze / suspend access
+
+4. Обновить:
+   - status = cancelled
+   - storageStatus = frozen
+   - deleteAfter = now + grace period
+   - уменьшить load активных ресурсов
+---------------------------------------------------------------
+6. ⏳ FLOW: Истечение подписки (expired)
+---------------------------------------------------------------
+1. Найти Provision по externalSubscriptionId
+2. Отключить VPN
+3. Заморозить storage
+4. Обновить:
+   - status = suspended
+   - storageStatus = frozen
+   - deleteAfter = now + grace period
+---------------------------------------------------------------
+7. 🔄 FLOW: Продление подписки
+---------------------------------------------------------------
+payment_paid (для существующего Provision)
+
+→ НЕ создавать заново
+→ НЕ менять ноды
+→ просто:
+   - обновить статус
+   - продлить доступ
+   - обновить lastExternalPaymentId
+   - обновить тарифные лимиты, если externalPlanId изменился
+   - сохранить новый processed_event
+---------------------------------------------------------------
+8. 🧠 FLOW: Sticky Allocation
+---------------------------------------------------------------
+IF Provision существует:
+→ всегда использовать:
+   - тот же vpnNodeId
+   - тот же storageBackendId
+---------------------------------------------------------------
+9. ⚖️ FLOW: Балансировка
+---------------------------------------------------------------
+nodes = active nodes
+nodes = nodes where status = active
+nodes = nodes where load < capacity
+
+sort by currentLoad ASC
+
+return first
+---------------------------------------------------------------
+10. ❤️ FLOW: Health Check нод
+---------------------------------------------------------------
+каждые N секунд:
+
+for each node:
+   ping API
+
+IF fail:
+   isActive = false
+   status = inactive
+
+IF recover:
+   isActive = true
+   status = active
+
+IF node blocked / provider ban:
+   status = blocked
+   новые пользователи на ноду не назначаются
+   affected provisions показываются в Admin UI
+---------------------------------------------------------------
+11. ➕ FLOW: Добавление новой ноды
+---------------------------------------------------------------
+Admin UI → POST /nodes
+
+сохраняем:
+- host
+- apiKey
+- capacity
+
+status = active
+---------------------------------------------------------------
+12. 🚫 FLOW: Нода переполнена
+---------------------------------------------------------------
+IF currentLoad >= capacity:
+→ не участвует в выборе
+---------------------------------------------------------------
+12.1 🔁 FLOW: VPN node blocked / migration placeholder
+---------------------------------------------------------------
+v1:
+IF VPN node заблокирована:
+→ status = blocked
+→ isActive = false
+→ остановить назначение новых пользователей на эту ноду
+→ показать affected provisions в Admin UI
+→ автоматическую миграцию НЕ выполнять
+
+v2:
+→ создать migration job
+→ выбрать новую VPN node
+→ создать VPN пользователя на новой ноде с теми же тарифными лимитами
+→ обновить Provision.vpnNodeId и subscriptionLink
+→ обновить Billing Provider
+→ удалить старого VPN пользователя, если старая нода доступна
+---------------------------------------------------------------
+13. 🔐 FLOW: Безопасность webhook
+---------------------------------------------------------------
+1. Проверка X-API-KEY
+2. Проверка X-Timestamp
+3. Проверка X-Signature = HMAC-SHA256(rawBody, WEBHOOK_SIGNING_SECRET)
+4. Replay protection: timestamp не старше 5 минут
+5. rate limit
+---------------------------------------------------------------
+14. 📊 FLOW: Метрики
+---------------------------------------------------------------
+на каждую задачу:
+- start time
+- end time
+- result
+---------------------------------------------------------------
+15. 🧪 FLOW: Test Mode
+---------------------------------------------------------------
+IF testMode = true:
+
+→ не вызывать реальные ноды
+→ возвращать mock данные
+---------------------------------------------------------------
+16. 🔄 FLOW: Частичный сбой (rollback)
+---------------------------------------------------------------
+если:
+VPN создан
+НО storage упал
+
+→ удалить VPN
+→ currentLoad не увеличивать, если Provision не стал active
+→ статус = failed
+---------------------------------------------------------------
+17. 🧠 FLOW: Консистентность нагрузки
+---------------------------------------------------------------
+при создании:
+→ currentLoad++ только после успешного создания активного ресурса
+→ увеличение выполняется атомарно с условием currentLoad < capacity
+→ если capacity уже занята конкурентной задачей, внешний ресурс удаляется и job пробует другую ноду
+
+при удалении:
+→ currentLoad--
+
+операции атомарные
+---------------------------------------------------------------
+18. 📦 FLOW: План влияет на provisioning
+---------------------------------------------------------------
+IF plan.storageEnabled = false:
+→ не создавать storage
+
+IF plan.vpnEnabled = false:
+→ не создавать VPN
+
+IF plan.maxDevices задан:
+→ передать maxDevices в 3x-ui как client.limitIp
+---------------------------------------------------------------
+19. 🔄 FLOW: Смена тарифа (plan_changed)
+---------------------------------------------------------------
+IF externalPlanId изменился:
+→ найти Provision по externalSubscriptionId
+→ обновить plan_id
+→ если VPN включен:
+   - обновить 3x-ui client.limitIp = plan.maxDevices
+→ если Storage включен:
+   - обновить storage quota / storageSize
+→ ноды не менять
+→ сохранить processed_event
+→ обновить Billing Provider status
+---------------------------------------------------------------
+20. 🧹 FLOW: Storage cleanup
+---------------------------------------------------------------
+Периодический job:
+→ найти provisions where storageStatus = frozen AND deleteAfter <= now
+→ удалить bucket/access через S3 StorageProvider API
+→ storageStatus = deleted
+→ status = deleted, если VPN уже отключен и подписка не активна
+→ записать audit log

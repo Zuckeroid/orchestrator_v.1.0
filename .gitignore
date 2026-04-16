@@ -1,0 +1,11 @@
+.tools/
+Docker Desktop Installer.exe
+
+**/node_modules/
+**/dist/
+**/.env
+**/logs/
+**/*.log
+
+.DS_Store
+Thumbs.db
