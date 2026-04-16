@@ -6,6 +6,8 @@ services:
     environment:
       DB_HOST: db
       REDIS_HOST: redis
+      VPN_PROVIDER: ${VPN_PROVIDER:-noop}
+      VPN_3XUI_TLS_REJECT_UNAUTHORIZED: ${VPN_3XUI_TLS_REJECT_UNAUTHORIZED:-true}
     ports:
       - "3000:3000"
     depends_on:

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
+import { Agent as HttpsAgent } from 'https';
 import { v4 as uuid } from 'uuid';
 import {
   CreateVpnClientInput,
@@ -30,6 +31,9 @@ interface ThreeXuiClientSettings {
 export class ThreeXuiVpnClient implements VpnClient {
   private readonly logger = new Logger(ThreeXuiVpnClient.name);
   private readonly sessions = new Map<string, string>();
+  private readonly insecureHttpsAgent = new HttpsAgent({
+    rejectUnauthorized: false,
+  });
 
   async createClient(
     node: VpnNodeConfig,
@@ -130,6 +134,7 @@ export class ThreeXuiVpnClient implements VpnClient {
       headers: {
         Cookie: cookie,
       },
+      httpsAgent: this.httpsAgent(),
       timeout: this.timeout(),
       validateStatus: () => true,
     });
@@ -153,7 +158,15 @@ export class ThreeXuiVpnClient implements VpnClient {
     }
 
     const credentials = this.parseCredentials(node.apiKey);
-    const response = await axios.post(this.url(node, this.loginPath()), credentials, {
+    const loginParams = new URLSearchParams();
+    loginParams.append('username', credentials.username);
+    loginParams.append('password', credentials.password);
+    const loginBody = loginParams.toString();
+    const response = await axios.post(this.url(node, this.loginPath()), loginBody, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      httpsAgent: this.httpsAgent(),
       timeout: this.timeout(),
       validateStatus: () => true,
     });
@@ -274,6 +287,14 @@ export class ThreeXuiVpnClient implements VpnClient {
 
   private timeout(): number {
     return Number(process.env.VPN_TIMEOUT ?? 5000);
+  }
+
+  private httpsAgent(): HttpsAgent | undefined {
+    const rejectUnauthorized = (
+      process.env.VPN_3XUI_TLS_REJECT_UNAUTHORIZED ?? 'true'
+    ).toLowerCase();
+
+    return rejectUnauthorized === 'false' ? this.insecureHttpsAgent : undefined;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

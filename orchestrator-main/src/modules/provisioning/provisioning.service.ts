@@ -246,6 +246,20 @@ export class ProvisioningService {
 
     const shouldReleaseCapacity = provision.status === 'active';
 
+    if (provision.vpnNodeId && provision.vpnLogin) {
+      const vpnNode = await this.vpnNodesService.findById(provision.vpnNodeId);
+      await this.vpnClient.updateClient(
+        this.toVpnNodeConfig(vpnNode),
+        provision.vpnLogin,
+        {
+          email: provision.email,
+          externalSubscriptionId: provision.externalSubscriptionId,
+          limitIp: 0,
+          enable: false,
+        },
+      );
+    }
+
     if (shouldReleaseCapacity && provision.vpnNodeId) {
       await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
     }

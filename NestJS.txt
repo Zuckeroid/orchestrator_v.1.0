@@ -213,7 +213,8 @@ integrations/vpn/
 Provider switch:
 - VPN_PROVIDER=noop by default
 - VPN_PROVIDER=3x-ui enables direct 3x-ui HTTP adapter
-- 3x-ui adapter uses /login session auth and /panel/api/inbounds client endpoints
+- 3x-ui adapter uses form-urlencoded /login session auth and /panel/api/inbounds client endpoints
+- self-signed panel TLS is controlled by VPN_3XUI_TLS_REJECT_UNAUTHORIZED
 - vpn_nodes.apiKey contains {"username":"...","password":"..."} or username:password
 -------------------------------------------------------------
 6.3 storage/
