@@ -34,6 +34,7 @@ Implemented screens:
 Implemented actions:
 - add plan mapping
 - edit plan mapping
+- delete unused plan mapping
 - add VPN node
 - disable VPN node
 - delete provision now
@@ -45,6 +46,7 @@ Plan Mapping:
 - Billing plan ID maps webhook plan/product IDs to Orchestrator limits.
 - Mapping controls VPN enabled, Storage enabled, max devices/IP limit, and storage bytes.
 - Billing plan ID is set on creation and is not edited from Admin UI.
+- Mapping deletion is blocked when provision records already reference it.
 
 Backend integration:
 - Uses X-Admin-Api-Key

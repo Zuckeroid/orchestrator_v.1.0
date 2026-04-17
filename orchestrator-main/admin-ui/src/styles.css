@@ -149,6 +149,15 @@ h2 {
   font-weight: 700;
 }
 
+.danger {
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.danger:hover:not(:disabled) {
+  border-color: #dc2626;
+}
+
 .settings-band {
   margin-bottom: 18px;
   padding: 14px;
@@ -291,6 +300,12 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   min-height: 38px;
+  gap: 8px;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 

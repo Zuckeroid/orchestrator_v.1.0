@@ -168,6 +168,22 @@ export function App() {
     setPlanForm(emptyPlanForm);
   }
 
+  async function deletePlan(plan: Plan) {
+    const confirmed = window.confirm(
+      `Delete mapping "${plan.name}" for billing plan "${plan.externalPlanId}"?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await runAction('Plan mapping deleted', async () => {
+      await api.delete(`/plans/${plan.id}`);
+      if (editingPlanId === plan.id) {
+        resetPlanForm();
+      }
+    });
+  }
+
   async function createNode(event: FormEvent) {
     event.preventDefault();
     await runAction('VPN node created', async () => {
@@ -319,6 +335,7 @@ export function App() {
             onCreate={createPlan}
             onCancel={resetPlanForm}
             onEdit={editPlan}
+            onDelete={deletePlan}
           />
         ) : null}
         {activeTab === 'nodes' ? (
@@ -443,6 +460,7 @@ function PlanMappingPanel({
   onCreate,
   onCancel,
   onEdit,
+  onDelete,
 }: {
   plans: Plan[];
   form: PlanFormState;
@@ -451,6 +469,7 @@ function PlanMappingPanel({
   onCreate: (event: FormEvent) => void;
   onCancel: () => void;
   onEdit: (plan: Plan) => void;
+  onDelete: (plan: Plan) => void;
 }) {
   return (
     <section className="split-layout">
@@ -567,9 +586,18 @@ function PlanMappingPanel({
                   <td>{plan.vpnEnabled ? 'on' : 'off'}</td>
                   <td>{plan.storageEnabled ? 'on' : 'off'}</td>
                   <td>
-                    <button onClick={() => onEdit(plan)} type="button">
-                      Edit
-                    </button>
+                    <div className="row-actions">
+                      <button onClick={() => onEdit(plan)} type="button">
+                        Edit
+                      </button>
+                      <button
+                        className="danger"
+                        onClick={() => onDelete(plan)}
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

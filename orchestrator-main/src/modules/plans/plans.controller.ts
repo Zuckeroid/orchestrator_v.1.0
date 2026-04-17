@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -81,6 +82,31 @@ export class PlansController {
     return {
       success: true,
       data: plan,
+    };
+  }
+
+  @Delete(':id')
+  async delete(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: AdminRequest,
+  ) {
+    const before = await this.plansService.getById(id);
+    await this.plansService.delete(id);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'plan',
+      entityId: id,
+      action: 'delete',
+      before,
+    });
+
+    return {
+      success: true,
+      data: {
+        id,
+        deleted: true,
+      },
     };
   }
 }

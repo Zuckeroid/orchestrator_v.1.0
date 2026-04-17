@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PlanEntity } from '../../database/entities/plan.entity';
+import { ProvisionEntity } from '../../database/entities/provision.entity';
 
 export interface CreatePlanInput {
   externalPlanId: string;
@@ -36,6 +41,8 @@ export class PlansService {
   constructor(
     @InjectRepository(PlanEntity)
     private readonly repository: Repository<PlanEntity>,
+    @InjectRepository(ProvisionEntity)
+    private readonly provisionsRepository: Repository<ProvisionEntity>,
   ) {}
 
   async list(): Promise<PlanEntity[]> {
@@ -96,6 +103,21 @@ export class PlansService {
     }
 
     return this.repository.save(plan);
+  }
+
+  async delete(id: string): Promise<void> {
+    const plan = await this.getById(id);
+    const provisionsCount = await this.provisionsRepository.countBy({
+      planId: plan.id,
+    });
+
+    if (provisionsCount > 0) {
+      throw new ConflictException(
+        `Plan mapping is used by ${provisionsCount} provision(s) and cannot be deleted`,
+      );
+    }
+
+    await this.repository.remove(plan);
   }
 
   async resolveByExternalPlanId(
