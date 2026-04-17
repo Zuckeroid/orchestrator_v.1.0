@@ -12,6 +12,8 @@ Boundary:
 - YooKassa confirms money movement to FOSSBilling.
 - FOSSBilling sends signed lifecycle events to Orchestrator.
 - Orchestrator provisions VPN/storage based on billing events.
+- Public product positioning is Storage-first: customers buy file storage and protected file access.
+- Public billing pages must not mention VPN, 3x-ui, inbound, nodes, proxy, or tunneling.
 
 Flow:
 - Client opens FOSSBilling invoice.
@@ -23,6 +25,17 @@ Flow:
 - FOSSBilling marks invoice paid.
 - FOSSBilling sends signed payment_paid webhook to Orchestrator.
 - Orchestrator applies Plan Mapping and provisions VPN/storage.
+
+Public tariff wording:
+- "Storage Start": file storage + protected file access for 1 device.
+- "Storage Plus": file storage + protected file access for 3 devices.
+- "Storage Family": file storage + protected file access for 5 devices.
+
+Internal mapping:
+- FOSSBilling product names are customer-facing.
+- Orchestrator externalPlanId values are internal and can be named storage_start/storage_plus/storage_family.
+- Plan.maxDevices is publicly described as "devices for protected file access".
+- Plan.maxDevices can still be used internally as the technical access limit.
 
 YooKassa gateway source:
 - fossbilling-extensions/YooKassa/src/library/Payment/Adapter/YooKassa/YooKassa.php

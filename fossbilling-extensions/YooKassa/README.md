@@ -2,6 +2,17 @@
 
 This extension is a v1.0 skeleton for accepting invoice payments through YooKassa in FOSSBilling and notifying Orchestrator after a successful payment.
 
+## Public Product Positioning
+
+For YooKassa moderation and customer-facing pages, the service should be described as Storage:
+
+- file storage;
+- protected access to files;
+- a device limit for protected file access;
+- automatic activation after payment.
+
+Do not mention VPN, 3x-ui, inbound, nodes, proxy, or tunneling on public billing pages. Those are internal infrastructure details and must stay inside Orchestrator/admin documentation.
+
 ## Boundary
 
 YooKassa belongs to FOSSBilling. Orchestrator does not know about YooKassa and only receives signed billing lifecycle events from FOSSBilling.
@@ -11,7 +22,7 @@ YooKassa
   -> FOSSBilling YooKassa gateway
   -> FOSSBilling invoice/order state
   -> signed Orchestrator webhook
-  -> VPN/storage provisioning
+  -> storage/protected-access provisioning
 ```
 
 ## Files
@@ -60,9 +71,10 @@ Optional mapping:
 
 ```json
 {
-  "1": "plan_basic",
-  "2": "plan_premium",
-  "order:123": "plan_custom"
+  "1": "storage_start",
+  "2": "storage_plus",
+  "3": "storage_family",
+  "order:123": "storage_custom"
 }
 ```
 
