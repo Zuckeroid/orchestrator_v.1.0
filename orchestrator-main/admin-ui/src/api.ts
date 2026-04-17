@@ -101,6 +101,7 @@ export interface QueueJob {
 export interface Plan {
   id: string;
   externalPlanId: string;
+  billingProvider?: string | null;
   name: string;
   maxDevices: number | null;
   storageSize: string | null;

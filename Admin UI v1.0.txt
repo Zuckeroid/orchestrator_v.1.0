@@ -25,18 +25,26 @@ Login/settings:
 
 Implemented screens:
 - Dashboard
-- Plans
+- Plan Mapping
 - VPN Nodes
 - Provisions
 - Events
 - Audit
 
 Implemented actions:
-- create plan
+- add plan mapping
+- edit plan mapping
 - add VPN node
 - disable VPN node
 - delete provision now
 - refresh dashboard/state
+
+Plan Mapping:
+- Billing creates commercial tariffs/products: prices, periods, invoices, payments, renewals.
+- Orchestrator stores technical mapping for those tariffs.
+- Billing plan ID maps webhook plan/product IDs to Orchestrator limits.
+- Mapping controls VPN enabled, Storage enabled, max devices/IP limit, and storage bytes.
+- Billing plan ID is set on creation and is not edited from Admin UI.
 
 Backend integration:
 - Uses X-Admin-Api-Key

@@ -20,6 +20,16 @@ type TabId =
   | 'events'
   | 'audit';
 
+interface PlanFormState {
+  externalPlanId: string;
+  billingProvider: string;
+  name: string;
+  maxDevices: string;
+  storageSize: string;
+  vpnEnabled: boolean;
+  storageEnabled: boolean;
+}
+
 interface ViewState {
   health?: HealthData;
   queue?: QueueOverview;
@@ -38,6 +48,16 @@ const emptyViewState: ViewState = {
   auditLogs: [],
 };
 
+const emptyPlanForm: PlanFormState = {
+  externalPlanId: '',
+  billingProvider: '',
+  name: '',
+  maxDevices: '3',
+  storageSize: '10737418240',
+  vpnEnabled: true,
+  storageEnabled: true,
+};
+
 export function App() {
   const [settings, setSettings] = useState<ApiSettings>(() => loadSettings());
   const [draftSettings, setDraftSettings] = useState<ApiSettings>(settings);
@@ -46,12 +66,8 @@ export function App() {
   const [status, setStatus] = useState('Ready');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [planForm, setPlanForm] = useState({
-    externalPlanId: '',
-    name: '',
-    maxDevices: '3',
-    storageSize: '10737418240',
-  });
+  const [planForm, setPlanForm] = useState<PlanFormState>(emptyPlanForm);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [nodeForm, setNodeForm] = useState({
     name: '',
     host: '',
@@ -113,20 +129,43 @@ export function App() {
 
   async function createPlan(event: FormEvent) {
     event.preventDefault();
-    await runAction('Plan created', async () => {
-      await api.post('/plans', {
-        externalPlanId: planForm.externalPlanId,
-        name: planForm.name,
-        maxDevices: Number(planForm.maxDevices),
-        storageSize: planForm.storageSize,
-      });
-      setPlanForm({
-        externalPlanId: '',
-        name: '',
-        maxDevices: '3',
-        storageSize: '10737418240',
-      });
+    const payload = buildPlanPayload(planForm);
+
+    await runAction(
+      editingPlanId ? 'Plan mapping updated' : 'Plan mapping added',
+      async () => {
+        if (editingPlanId) {
+          await api.patch(`/plans/${editingPlanId}`, payload);
+        } else {
+          await api.post('/plans', {
+            externalPlanId: planForm.externalPlanId,
+            ...payload,
+          });
+        }
+
+        resetPlanForm();
+      },
+    );
+  }
+
+  function editPlan(plan: Plan) {
+    setEditingPlanId(plan.id);
+    setPlanForm({
+      externalPlanId: plan.externalPlanId,
+      billingProvider: plan.billingProvider ?? '',
+      name: plan.name,
+      maxDevices: String(plan.maxDevices ?? 0),
+      storageSize: plan.storageSize ?? '0',
+      vpnEnabled: plan.vpnEnabled,
+      storageEnabled: plan.storageEnabled,
     });
+    setActiveTab('plans');
+    setStatus(`Editing ${plan.name}`);
+  }
+
+  function resetPlanForm() {
+    setEditingPlanId(null);
+    setPlanForm(emptyPlanForm);
   }
 
   async function createNode(event: FormEvent) {
@@ -176,7 +215,7 @@ export function App() {
 
   const navItems: { id: TabId; label: string }[] = [
     { id: 'dashboard', label: 'Dashboard' },
-    { id: 'plans', label: 'Plans' },
+    { id: 'plans', label: 'Plan Mapping' },
     { id: 'nodes', label: 'VPN Nodes' },
     { id: 'provisions', label: 'Provisions' },
     { id: 'events', label: 'Events' },
@@ -272,11 +311,14 @@ export function App() {
           <Dashboard health={view.health} queue={view.queue} view={view} />
         ) : null}
         {activeTab === 'plans' ? (
-          <PlansPanel
+          <PlanMappingPanel
             plans={view.plans}
             form={planForm}
             setForm={setPlanForm}
+            editingPlanId={editingPlanId}
             onCreate={createPlan}
+            onCancel={resetPlanForm}
+            onEdit={editPlan}
           />
         ) : null}
         {activeTab === 'nodes' ? (
@@ -393,35 +435,32 @@ function ProvisionSnapshot({ provisions }: { provisions: Provision[] }) {
   );
 }
 
-function PlansPanel({
+function PlanMappingPanel({
   plans,
   form,
   setForm,
+  editingPlanId,
   onCreate,
+  onCancel,
+  onEdit,
 }: {
   plans: Plan[];
-  form: {
-    externalPlanId: string;
-    name: string;
-    maxDevices: string;
-    storageSize: string;
-  };
-  setForm: (form: {
-    externalPlanId: string;
-    name: string;
-    maxDevices: string;
-    storageSize: string;
-  }) => void;
+  form: PlanFormState;
+  setForm: (form: PlanFormState) => void;
+  editingPlanId: string | null;
   onCreate: (event: FormEvent) => void;
+  onCancel: () => void;
+  onEdit: (plan: Plan) => void;
 }) {
   return (
     <section className="split-layout">
       <form className="panel form-panel" onSubmit={onCreate}>
-        <h2>Create Plan</h2>
+        <h2>{editingPlanId ? 'Edit Mapping' : 'Add Mapping'}</h2>
         <label>
-          External plan ID
+          Billing plan ID
           <input
             required
+            disabled={editingPlanId !== null}
             value={form.externalPlanId}
             onChange={(event) =>
               setForm({ ...form, externalPlanId: event.target.value })
@@ -429,7 +468,17 @@ function PlansPanel({
           />
         </label>
         <label>
-          Name
+          Billing provider
+          <input
+            placeholder="fossbilling"
+            value={form.billingProvider}
+            onChange={(event) =>
+              setForm({ ...form, billingProvider: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Mapping name
           <input
             required
             value={form.name}
@@ -437,7 +486,7 @@ function PlansPanel({
           />
         </label>
         <label>
-          Max devices
+          Max devices / IP limit
           <input
             required
             type="number"
@@ -458,22 +507,76 @@ function PlansPanel({
             }
           />
         </label>
-        <button className="primary" type="submit">
-          Create plan
-        </button>
+        <div className="toggle-grid">
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={form.vpnEnabled}
+              onChange={(event) =>
+                setForm({ ...form, vpnEnabled: event.target.checked })
+              }
+            />
+            VPN enabled
+          </label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={form.storageEnabled}
+              onChange={(event) =>
+                setForm({ ...form, storageEnabled: event.target.checked })
+              }
+            />
+            Storage enabled
+          </label>
+        </div>
+        <div className="form-actions">
+          <button className="primary" type="submit">
+            {editingPlanId ? 'Save mapping' : 'Add mapping'}
+          </button>
+          {editingPlanId ? (
+            <button type="button" onClick={onCancel}>
+              Cancel
+            </button>
+          ) : null}
+        </div>
       </form>
-      <DataTable
-        title="Plans"
-        headers={['Name', 'External ID', 'Devices', 'Storage', 'VPN', 'Storage']}
-        rows={plans.map((plan) => [
-          plan.name,
-          plan.externalPlanId,
-          plan.maxDevices ?? 'none',
-          plan.storageSize ?? 'none',
-          plan.vpnEnabled ? 'on' : 'off',
-          plan.storageEnabled ? 'on' : 'off',
-        ])}
-      />
+      <section className="panel table-panel">
+        <h2>Plan Mapping</h2>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Mapping</th>
+                <th>Billing plan ID</th>
+                <th>Provider</th>
+                <th>IP limit</th>
+                <th>Storage bytes</th>
+                <th>VPN</th>
+                <th>Storage</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plans.map((plan) => (
+                <tr key={plan.id}>
+                  <td>{plan.name}</td>
+                  <td>{plan.externalPlanId}</td>
+                  <td>{plan.billingProvider ?? 'default'}</td>
+                  <td>{plan.maxDevices ?? 'none'}</td>
+                  <td>{plan.storageSize ?? 'none'}</td>
+                  <td>{plan.vpnEnabled ? 'on' : 'off'}</td>
+                  <td>{plan.storageEnabled ? 'on' : 'off'}</td>
+                  <td>
+                    <button onClick={() => onEdit(plan)} type="button">
+                      Edit
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </section>
   );
 }
@@ -752,4 +855,15 @@ function groupCounts(values: string[]) {
     acc[value] = (acc[value] ?? 0) + 1;
     return acc;
   }, {});
+}
+
+function buildPlanPayload(form: PlanFormState) {
+  return {
+    billingProvider: form.billingProvider.trim() || null,
+    name: form.name,
+    maxDevices: Number(form.maxDevices),
+    storageSize: form.storageSize,
+    vpnEnabled: form.vpnEnabled,
+    storageEnabled: form.storageEnabled,
+  };
 }

@@ -186,6 +186,18 @@ input:focus {
   outline: 2px solid #99f6e4;
 }
 
+input:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+  accent-color: #0f766e;
+}
+
 .error-line {
   margin-bottom: 18px;
   border-left: 4px solid #dc2626;
@@ -266,6 +278,20 @@ input:focus {
 
 .form-panel button {
   margin-top: 4px;
+}
+
+.toggle-grid,
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  gap: 8px;
 }
 
 .table-panel {
