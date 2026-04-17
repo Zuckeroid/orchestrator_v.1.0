@@ -1,0 +1,70 @@
+Billing Integration v1.0
+------------------------
+
+Decision:
+- Billing system: FOSSBilling.
+- Payment processor: YooKassa.
+- YooKassa integration lives inside FOSSBilling as a custom payment gateway.
+- Orchestrator does not know about YooKassa and does not process customer payments.
+
+Boundary:
+- FOSSBilling owns clients, invoices, payments, renewals, and billing status.
+- YooKassa confirms money movement to FOSSBilling.
+- FOSSBilling sends signed lifecycle events to Orchestrator.
+- Orchestrator provisions VPN/storage based on billing events.
+
+Flow:
+- Client opens FOSSBilling invoice.
+- Client selects YooKassa gateway.
+- FOSSBilling creates YooKassa payment.
+- Client pays through YooKassa.
+- YooKassa sends webhook to FOSSBilling callback URL.
+- FOSSBilling verifies payment status through YooKassa API.
+- FOSSBilling marks invoice paid.
+- FOSSBilling sends signed payment_paid webhook to Orchestrator.
+- Orchestrator applies Plan Mapping and provisions VPN/storage.
+
+YooKassa gateway source:
+- fossbilling-extensions/YooKassa/src/library/Payment/Adapter/YooKassa/YooKassa.php
+
+Install target:
+- <fossbilling-root>/src/library/Payment/Adapter/YooKassa/YooKassa.php
+
+FOSSBilling gateway config:
+- shop_id
+- secret_key
+- orchestrator_webhook_url
+- orchestrator_webhook_api_key
+- orchestrator_webhook_signing_secret
+- default_external_plan_id
+- product_plan_map_json
+- auto_redirect
+
+Orchestrator webhook contract:
+- URL: /api/v1/webhook/billing
+- Method: POST
+- Headers:
+  - Content-Type: application/json
+  - x-api-key: WEBHOOK_API_KEY
+  - x-timestamp: unix seconds
+  - x-signature: HMAC SHA-256 over raw JSON body
+
+payment_paid payload:
+{
+  "event": "payment_paid",
+  "eventId": "fossbilling_invoice_123_payment_yookassa_payment_id",
+  "externalUserId": "client_42",
+  "externalSubscriptionId": "order_77",
+  "externalOrderId": "invoice_123",
+  "externalPaymentId": "yookassa_payment_id",
+  "externalPlanId": "plan_basic",
+  "email": "client@example.com",
+  "status": "paid"
+}
+
+v1.0 limitations:
+- YooKassa recurring payments are not implemented in the gateway.
+- FOSSBilling recurring invoices are paid as one-time YooKassa payments.
+- Refund handling is not implemented.
+- Subscription cancellation/expiration events still need FOSSBilling-side event hooks or a small FOSSBilling module.
+- Product/order to Orchestrator plan mapping is manual.
