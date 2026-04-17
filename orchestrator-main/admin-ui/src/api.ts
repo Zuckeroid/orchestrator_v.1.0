@@ -173,6 +173,22 @@ export interface VpnNode {
   updatedAt: string;
 }
 
+export interface StorageBackend {
+  id: string;
+  name?: string | null;
+  endpoint: string;
+  apiKey: string;
+  secretKey?: string | null;
+  region?: string | null;
+  provider: string;
+  bucketPrefix?: string | null;
+  capacity: number;
+  currentLoad: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Provision {
   id: string;
   externalUserId: string;

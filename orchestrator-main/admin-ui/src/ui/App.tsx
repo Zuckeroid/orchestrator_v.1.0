@@ -10,6 +10,7 @@ import {
   ProcessedEvent,
   Provision,
   QueueOverview,
+  StorageBackend,
   VpnNode,
 } from '../api';
 import { clearSettings, loadSettings, saveSettings } from '../storage';
@@ -18,6 +19,7 @@ type TabId =
   | 'dashboard'
   | 'plans'
   | 'nodes'
+  | 'storage'
   | 'provisions'
   | 'webhook'
   | 'events'
@@ -45,11 +47,23 @@ interface WebhookFormState {
   status: string;
 }
 
+interface StorageBackendFormState {
+  name: string;
+  provider: string;
+  endpoint: string;
+  region: string;
+  apiKey: string;
+  secretKey: string;
+  bucketPrefix: string;
+  capacity: string;
+}
+
 interface ViewState {
   health?: HealthData;
   queue?: QueueOverview;
   plans: Plan[];
   nodes: VpnNode[];
+  storageBackends: StorageBackend[];
   provisions: Provision[];
   events: ProcessedEvent[];
   auditLogs: AuditLog[];
@@ -58,6 +72,7 @@ interface ViewState {
 const emptyViewState: ViewState = {
   plans: [],
   nodes: [],
+  storageBackends: [],
   provisions: [],
   events: [],
   auditLogs: [],
@@ -71,6 +86,17 @@ const emptyPlanForm: PlanFormState = {
   storageSize: '10737418240',
   vpnEnabled: true,
   storageEnabled: true,
+};
+
+const emptyStorageBackendForm: StorageBackendFormState = {
+  name: '',
+  provider: 'minio',
+  endpoint: '',
+  region: 'us-east-1',
+  apiKey: '',
+  secretKey: '',
+  bucketPrefix: '',
+  capacity: '100',
 };
 
 function createWebhookForm(): WebhookFormState {
@@ -110,6 +136,8 @@ export function App() {
     inboundId: '1',
     capacity: '100',
   });
+  const [storageBackendForm, setStorageBackendForm] =
+    useState<StorageBackendFormState>(emptyStorageBackendForm);
 
   const api = useMemo(() => new ApiClient(settings), [settings]);
   const isConfigured = settings.adminApiKey.trim().length > 0;
@@ -123,18 +151,36 @@ export function App() {
     setIsLoading(true);
     setError('');
     try {
-      const [health, queue, plans, nodes, provisions, events, auditLogs] =
-        await Promise.all([
+      const [
+        health,
+        queue,
+        plans,
+        nodes,
+        storageBackends,
+        provisions,
+        events,
+        auditLogs,
+      ] = await Promise.all([
           api.get<HealthData>('/health'),
           api.get<QueueOverview>('/jobs/queue'),
           api.get<Plan[]>('/plans'),
           api.get<VpnNode[]>('/nodes/vpn'),
+          api.get<StorageBackend[]>('/storage-backends'),
           api.get<Provision[]>('/provisions?limit=50'),
           api.get<ProcessedEvent[]>('/processed-events?limit=50'),
           api.get<AuditLog[]>('/audit-logs?limit=50'),
         ]);
 
-      setView({ health, queue, plans, nodes, provisions, events, auditLogs });
+      setView({
+        health,
+        queue,
+        plans,
+        nodes,
+        storageBackends,
+        provisions,
+        events,
+        auditLogs,
+      });
       setStatus(`Updated ${new Date().toLocaleTimeString()}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -289,6 +335,36 @@ export function App() {
     await runAction('VPN node disabled', () => api.delete(`/nodes/vpn/${id}`));
   }
 
+  async function createStorageBackend(event: FormEvent) {
+    event.preventDefault();
+    await runAction('Storage backend created', async () => {
+      await api.post('/storage-backends', {
+        name: optionalString(storageBackendForm.name),
+        provider: storageBackendForm.provider,
+        endpoint: storageBackendForm.endpoint,
+        region: optionalString(storageBackendForm.region),
+        apiKey: storageBackendForm.apiKey,
+        secretKey: optionalString(storageBackendForm.secretKey),
+        bucketPrefix: optionalString(storageBackendForm.bucketPrefix),
+        capacity: Number(storageBackendForm.capacity),
+      });
+      setStorageBackendForm(emptyStorageBackendForm);
+    });
+  }
+
+  async function disableStorageBackend(backend: StorageBackend) {
+    const confirmed = window.confirm(
+      `Disable storage backend "${backend.name ?? backend.endpoint}"?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await runAction('Storage backend disabled', () =>
+      api.delete(`/storage-backends/${backend.id}`),
+    );
+  }
+
   async function deleteProvisionNow(id: string) {
     await runAction('Provision deleted', () =>
       api.post(`/provisions/${id}/delete-now`),
@@ -313,6 +389,7 @@ export function App() {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'plans', label: 'Plan Mapping' },
     { id: 'nodes', label: 'VPN Nodes' },
+    { id: 'storage', label: 'Storage Backends' },
     { id: 'provisions', label: 'Provisions' },
     { id: 'webhook', label: 'Webhook Tester' },
     { id: 'events', label: 'Events' },
@@ -452,6 +529,15 @@ export function App() {
             setForm={setNodeForm}
             onCreate={createNode}
             onDisable={disableNode}
+          />
+        ) : null}
+        {activeTab === 'storage' ? (
+          <StorageBackendsPanel
+            backends={view.storageBackends}
+            form={storageBackendForm}
+            setForm={setStorageBackendForm}
+            onCreate={createStorageBackend}
+            onDisable={disableStorageBackend}
           />
         ) : null}
         {activeTab === 'provisions' ? (
@@ -835,6 +921,150 @@ function NodesPanel({
                   <td>{node.inboundId ?? 'none'}</td>
                   <td>
                     <button onClick={() => onDisable(node.id)} type="button">
+                      Disable
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function StorageBackendsPanel({
+  backends,
+  form,
+  setForm,
+  onCreate,
+  onDisable,
+}: {
+  backends: StorageBackend[];
+  form: StorageBackendFormState;
+  setForm: (form: StorageBackendFormState) => void;
+  onCreate: (event: FormEvent) => void;
+  onDisable: (backend: StorageBackend) => void;
+}) {
+  return (
+    <section className="split-layout">
+      <form className="panel form-panel" onSubmit={onCreate}>
+        <h2>Add Storage Backend</h2>
+        <label>
+          Name
+          <input
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+          />
+        </label>
+        <label>
+          Provider
+          <select
+            value={form.provider}
+            onChange={(event) =>
+              setForm({ ...form, provider: event.target.value })
+            }
+          >
+            <option value="minio">minio</option>
+            <option value="s3">s3</option>
+          </select>
+        </label>
+        <label>
+          Endpoint
+          <input
+            required
+            placeholder="http://localhost:9000"
+            value={form.endpoint}
+            onChange={(event) =>
+              setForm({ ...form, endpoint: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Region
+          <input
+            value={form.region}
+            onChange={(event) => setForm({ ...form, region: event.target.value })}
+          />
+        </label>
+        <label>
+          Access key
+          <input
+            required
+            value={form.apiKey}
+            onChange={(event) => setForm({ ...form, apiKey: event.target.value })}
+          />
+        </label>
+        <label>
+          Secret key
+          <input
+            type="password"
+            value={form.secretKey}
+            onChange={(event) =>
+              setForm({ ...form, secretKey: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Bucket prefix
+          <input
+            value={form.bucketPrefix}
+            onChange={(event) =>
+              setForm({ ...form, bucketPrefix: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Capacity
+          <input
+            required
+            type="number"
+            min="1"
+            value={form.capacity}
+            onChange={(event) =>
+              setForm({ ...form, capacity: event.target.value })
+            }
+          />
+        </label>
+        <button className="primary" type="submit">
+          Add backend
+        </button>
+      </form>
+      <section className="panel table-panel">
+        <h2>Storage Backends</h2>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Provider</th>
+                <th>Endpoint</th>
+                <th>Region</th>
+                <th>Load</th>
+                <th>Active</th>
+                <th>Prefix</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {backends.map((backend) => (
+                <tr key={backend.id}>
+                  <td>{backend.name ?? 'unnamed'}</td>
+                  <td>{backend.provider}</td>
+                  <td>{backend.endpoint}</td>
+                  <td>{backend.region ?? 'none'}</td>
+                  <td>
+                    {backend.currentLoad}/{backend.capacity}
+                  </td>
+                  <td>{backend.isActive ? 'yes' : 'no'}</td>
+                  <td>{backend.bucketPrefix ?? 'none'}</td>
+                  <td>
+                    <button
+                      disabled={!backend.isActive}
+                      onClick={() => onDisable(backend)}
+                      type="button"
+                    >
                       Disable
                     </button>
                   </td>

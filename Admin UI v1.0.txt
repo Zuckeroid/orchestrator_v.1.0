@@ -27,6 +27,7 @@ Implemented screens:
 - Dashboard
 - Plan Mapping
 - VPN Nodes
+- Storage Backends
 - Provisions
 - Webhook Tester
 - Events
@@ -38,6 +39,8 @@ Implemented actions:
 - delete unused plan mapping
 - add VPN node
 - disable VPN node
+- add storage backend
+- disable storage backend
 - delete provision now
 - send signed billing webhook test events
 - refresh dashboard/state
@@ -49,6 +52,12 @@ Plan Mapping:
 - Mapping controls VPN enabled, Storage enabled, max devices/IP limit, and storage bytes.
 - Billing plan ID is set on creation and is not edited from Admin UI.
 - Mapping deletion is blocked when provision records already reference it.
+
+Storage Backends:
+- Admin UI manages S3-compatible storage backend records for Orchestrator.
+- Supported v1.0 fields: provider, endpoint, region, access key, secret key, bucket prefix, capacity.
+- Disable action marks backend inactive for new provisions without deleting historical records.
+- Real storage provider can be MinIO or S3-compatible service; noop/mock path remains valid for local checks.
 
 Backend integration:
 - Uses X-Admin-Api-Key
