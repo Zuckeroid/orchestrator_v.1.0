@@ -27,15 +27,17 @@ Flow:
 - Orchestrator applies Plan Mapping and provisions VPN/storage.
 
 Public tariff wording:
-- "Storage Start": file storage + protected file access for 1 device.
-- "Storage Plus": file storage + protected file access for 3 devices.
-- "Storage Family": file storage + protected file access for 5 devices.
+- "Storage Start": personal cloud storage + protected file access for 1 device, 290 RUB/month.
+- "Storage Plus": personal cloud storage + protected file access for 3 devices, 790 RUB/month.
+- "Storage Family": personal cloud storage + protected file access for 5 devices, price TBD.
 
 Internal mapping:
 - FOSSBilling product names are customer-facing.
 - Orchestrator externalPlanId values are internal and can be named storage_start/storage_plus/storage_family.
 - Plan.maxDevices is publicly described as "devices for protected file access".
 - Plan.maxDevices can still be used internally as the technical access limit.
+- Access instructions are sent by email to the registered customer after payment.
+- The client area should stay minimal: sign in/sign up, choose plan, pay invoice, see service status.
 
 YooKassa gateway source:
 - fossbilling-extensions/YooKassa/src/library/Payment/Adapter/YooKassa/YooKassa.php
