@@ -28,6 +28,7 @@ Implemented screens:
 - Plan Mapping
 - VPN Nodes
 - Provisions
+- Webhook Tester
 - Events
 - Audit
 
@@ -38,6 +39,7 @@ Implemented actions:
 - add VPN node
 - disable VPN node
 - delete provision now
+- send signed billing webhook test events
 - refresh dashboard/state
 
 Plan Mapping:
@@ -53,6 +55,14 @@ Backend integration:
 - Uses X-Admin-Actor
 - Uses X-Request-Id per request
 - Backend CORS allows ADMIN_UI_ORIGIN, default http://localhost:5173
+
+Webhook Tester:
+- Sends requests to /api/v1/webhook/billing.
+- Uses WEBHOOK_API_KEY as x-api-key.
+- Uses WEBHOOK_SIGNING_SECRET to create x-signature.
+- Uses x-timestamp and HMAC SHA-256 over the raw JSON body.
+- Same eventId can be sent twice to verify idempotency.
+- Webhook key and signing secret are stored in browser localStorage for local/operator use.
 
 v1.0 scope:
 - Operator control panel for the existing Admin API.

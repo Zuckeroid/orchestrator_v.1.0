@@ -3,6 +3,8 @@ import {
   ApiClient,
   ApiSettings,
   AuditLog,
+  BillingWebhookEvent,
+  BillingWebhookPayload,
   HealthData,
   Plan,
   ProcessedEvent,
@@ -17,6 +19,7 @@ type TabId =
   | 'plans'
   | 'nodes'
   | 'provisions'
+  | 'webhook'
   | 'events'
   | 'audit';
 
@@ -28,6 +31,18 @@ interface PlanFormState {
   storageSize: string;
   vpnEnabled: boolean;
   storageEnabled: boolean;
+}
+
+interface WebhookFormState {
+  event: BillingWebhookEvent;
+  eventId: string;
+  externalUserId: string;
+  externalSubscriptionId: string;
+  externalOrderId: string;
+  externalPaymentId: string;
+  externalPlanId: string;
+  email: string;
+  status: string;
 }
 
 interface ViewState {
@@ -58,6 +73,22 @@ const emptyPlanForm: PlanFormState = {
   storageEnabled: true,
 };
 
+function createWebhookForm(): WebhookFormState {
+  const suffix = Date.now();
+
+  return {
+    event: 'payment_paid',
+    eventId: `evt_${suffix}`,
+    externalUserId: `user_${suffix}`,
+    externalSubscriptionId: `sub_${suffix}`,
+    externalOrderId: `order_${suffix}`,
+    externalPaymentId: `pay_${suffix}`,
+    externalPlanId: '',
+    email: `client-${suffix}@example.com`,
+    status: 'paid',
+  };
+}
+
 export function App() {
   const [settings, setSettings] = useState<ApiSettings>(() => loadSettings());
   const [draftSettings, setDraftSettings] = useState<ApiSettings>(settings);
@@ -68,6 +99,10 @@ export function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [planForm, setPlanForm] = useState<PlanFormState>(emptyPlanForm);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [webhookForm, setWebhookForm] = useState<WebhookFormState>(() =>
+    createWebhookForm(),
+  );
+  const [webhookResult, setWebhookResult] = useState('');
   const [nodeForm, setNodeForm] = useState({
     name: '',
     host: '',
@@ -111,6 +146,18 @@ export function App() {
   useEffect(() => {
     void refreshAll();
   }, [api, isConfigured]);
+
+  useEffect(() => {
+    if (webhookForm.externalPlanId || view.plans.length === 0) {
+      return;
+    }
+
+    setWebhookForm((current) =>
+      current.externalPlanId
+        ? current
+        : { ...current, externalPlanId: view.plans[0].externalPlanId },
+    );
+  }, [view.plans, webhookForm.externalPlanId]);
 
   function handleSaveSettings(event: FormEvent) {
     event.preventDefault();
@@ -184,6 +231,39 @@ export function App() {
     });
   }
 
+  async function sendWebhookTest(event: FormEvent) {
+    event.preventDefault();
+    if (!settings.webhookApiKey || !settings.webhookSigningSecret) {
+      setError('Enter webhook API key and signing secret in settings');
+      return;
+    }
+
+    await runAction('Webhook test sent', async () => {
+      const result = await api.postBillingWebhook(buildWebhookPayload(webhookForm));
+      setWebhookResult(
+        result.duplicate
+          ? 'Duplicate event accepted without queueing'
+          : result.queued
+            ? 'Event queued for processing'
+            : 'Event accepted',
+      );
+    });
+  }
+
+  function regenerateWebhookIds() {
+    const next = createWebhookForm();
+    setWebhookForm((current) => ({
+      ...current,
+      eventId: next.eventId,
+      externalUserId: next.externalUserId,
+      externalSubscriptionId: next.externalSubscriptionId,
+      externalOrderId: next.externalOrderId,
+      externalPaymentId: next.externalPaymentId,
+      email: next.email,
+    }));
+    setWebhookResult('');
+  }
+
   async function createNode(event: FormEvent) {
     event.preventDefault();
     await runAction('VPN node created', async () => {
@@ -234,6 +314,7 @@ export function App() {
     { id: 'plans', label: 'Plan Mapping' },
     { id: 'nodes', label: 'VPN Nodes' },
     { id: 'provisions', label: 'Provisions' },
+    { id: 'webhook', label: 'Webhook Tester' },
     { id: 'events', label: 'Events' },
     { id: 'audit', label: 'Audit' },
   ];
@@ -312,6 +393,32 @@ export function App() {
                 }
               />
             </label>
+            <label>
+              Webhook key
+              <input
+                type="password"
+                value={draftSettings.webhookApiKey}
+                onChange={(event) =>
+                  setDraftSettings({
+                    ...draftSettings,
+                    webhookApiKey: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              Webhook secret
+              <input
+                type="password"
+                value={draftSettings.webhookSigningSecret}
+                onChange={(event) =>
+                  setDraftSettings({
+                    ...draftSettings,
+                    webhookSigningSecret: event.target.value,
+                  })
+                }
+              />
+            </label>
             <button className="primary" type="submit">
               Save
             </button>
@@ -351,6 +458,16 @@ export function App() {
           <ProvisionsPanel
             provisions={view.provisions}
             onDeleteNow={deleteProvisionNow}
+          />
+        ) : null}
+        {activeTab === 'webhook' ? (
+          <WebhookTesterPanel
+            form={webhookForm}
+            plans={view.plans}
+            result={webhookResult}
+            setForm={setWebhookForm}
+            onRegenerate={regenerateWebhookIds}
+            onSend={sendWebhookTest}
           />
         ) : null}
         {activeTab === 'events' ? (
@@ -793,6 +910,179 @@ function ProvisionsPanel({
   );
 }
 
+function WebhookTesterPanel({
+  form,
+  plans,
+  result,
+  setForm,
+  onRegenerate,
+  onSend,
+}: {
+  form: WebhookFormState;
+  plans: Plan[];
+  result: string;
+  setForm: (form: WebhookFormState) => void;
+  onRegenerate: () => void;
+  onSend: (event: FormEvent) => void;
+}) {
+  const needsPlan = form.event === 'payment_paid' || form.event === 'plan_changed';
+  const needsPayment = form.event === 'payment_paid';
+
+  function setEvent(event: BillingWebhookEvent) {
+    setForm({
+      ...form,
+      event,
+      status: event === 'payment_paid' ? 'paid' : '',
+    });
+  }
+
+  return (
+    <section className="split-layout">
+      <form className="panel form-panel" onSubmit={onSend}>
+        <h2>Send Test Webhook</h2>
+        <label>
+          Event
+          <select
+            value={form.event}
+            onChange={(event) =>
+              setEvent(event.target.value as BillingWebhookEvent)
+            }
+          >
+            <option value="payment_paid">payment_paid</option>
+            <option value="subscription_cancel">subscription_cancel</option>
+            <option value="subscription_expired">subscription_expired</option>
+            <option value="plan_changed">plan_changed</option>
+          </select>
+        </label>
+        <label>
+          Event ID
+          <input
+            required
+            value={form.eventId}
+            onChange={(event) =>
+              setForm({ ...form, eventId: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Email
+          <input
+            required
+            type="email"
+            value={form.email}
+            onChange={(event) => setForm({ ...form, email: event.target.value })}
+          />
+        </label>
+        <label>
+          Subscription ID
+          <input
+            required
+            value={form.externalSubscriptionId}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                externalSubscriptionId: event.target.value,
+              })
+            }
+          />
+        </label>
+        <label>
+          User ID
+          <input
+            required
+            value={form.externalUserId}
+            onChange={(event) =>
+              setForm({ ...form, externalUserId: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Billing plan ID
+          <input
+            list="billing-plan-ids"
+            required={needsPlan}
+            value={form.externalPlanId}
+            onChange={(event) =>
+              setForm({ ...form, externalPlanId: event.target.value })
+            }
+          />
+        </label>
+        <datalist id="billing-plan-ids">
+          {plans.map((plan) => (
+            <option key={plan.id} value={plan.externalPlanId}>
+              {plan.name}
+            </option>
+          ))}
+        </datalist>
+        <label>
+          Payment ID
+          <input
+            required={needsPayment}
+            value={form.externalPaymentId}
+            onChange={(event) =>
+              setForm({ ...form, externalPaymentId: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Order ID
+          <input
+            value={form.externalOrderId}
+            onChange={(event) =>
+              setForm({ ...form, externalOrderId: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Status
+          <input
+            required={needsPayment}
+            value={form.status}
+            onChange={(event) =>
+              setForm({ ...form, status: event.target.value })
+            }
+          />
+        </label>
+        <div className="form-actions">
+          <button className="primary" type="submit">
+            Send webhook
+          </button>
+          <button type="button" onClick={onRegenerate}>
+            Regenerate IDs
+          </button>
+        </div>
+        {result ? <div className="success-line">{result}</div> : null}
+      </form>
+      <DataTable
+        title="Webhook Contract"
+        headers={['Event', 'Required fields', 'Result']}
+        rows={[
+          [
+            'payment_paid',
+            'eventId, user, subscription, payment, plan, email, status=paid',
+            'create or renew provision',
+          ],
+          [
+            'plan_changed',
+            'eventId, user, subscription, plan, email',
+            'update provision limits',
+          ],
+          [
+            'subscription_cancel',
+            'eventId, user, subscription, email',
+            'cancel and schedule cleanup',
+          ],
+          [
+            'subscription_expired',
+            'eventId, user, subscription, email',
+            'suspend and schedule cleanup',
+          ],
+        ]}
+      />
+    </section>
+  );
+}
+
 function EventsPanel({
   events,
   queue,
@@ -894,4 +1184,24 @@ function buildPlanPayload(form: PlanFormState) {
     vpnEnabled: form.vpnEnabled,
     storageEnabled: form.storageEnabled,
   };
+}
+
+function buildWebhookPayload(form: WebhookFormState): BillingWebhookPayload {
+  return {
+    event: form.event,
+    eventId: form.eventId.trim(),
+    externalUserId: form.externalUserId.trim(),
+    externalSubscriptionId: form.externalSubscriptionId.trim(),
+    externalOrderId: optionalString(form.externalOrderId),
+    externalPaymentId: optionalString(form.externalPaymentId),
+    externalPlanId: optionalString(form.externalPlanId),
+    email: form.email.trim(),
+    status: optionalString(form.status),
+  };
+}
+
+function optionalString(value: string): string | undefined {
+  const trimmed = value.trim();
+
+  return trimmed.length > 0 ? trimmed : undefined;
 }

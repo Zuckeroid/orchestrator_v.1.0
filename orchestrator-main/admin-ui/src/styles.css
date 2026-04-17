@@ -21,7 +21,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
   letter-spacing: 0;
 }
@@ -180,7 +181,8 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-height: 38px;
   border: 1px solid #cbd5e1;
@@ -190,7 +192,8 @@ input {
   color: #111827;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: #0f766e;
   outline: 2px solid #99f6e4;
 }
@@ -212,6 +215,13 @@ input[type="checkbox"] {
   border-left: 4px solid #dc2626;
   background: #fef2f2;
   color: #991b1b;
+  padding: 12px 14px;
+}
+
+.success-line {
+  border-left: 4px solid #16a34a;
+  background: #f0fdf4;
+  color: #166534;
   padding: 12px 14px;
 }
 

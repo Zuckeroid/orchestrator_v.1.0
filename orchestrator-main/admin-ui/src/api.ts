@@ -2,6 +2,8 @@ export interface ApiSettings {
   apiBaseUrl: string;
   adminApiKey: string;
   adminActor: string;
+  webhookApiKey: string;
+  webhookSigningSecret: string;
 }
 
 export interface ApiEnvelope<T> {
@@ -39,6 +41,34 @@ export class ApiClient {
     return this.request<T>(path, { method: 'DELETE' });
   }
 
+  async postBillingWebhook(
+    payload: BillingWebhookPayload,
+  ): Promise<BillingWebhookResponse> {
+    const body = JSON.stringify(payload);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = await hmacSha256(this.settings.webhookSigningSecret, body);
+    const response = await fetch(`${this.settings.apiBaseUrl}/webhook/billing`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.settings.webhookApiKey,
+        'x-timestamp': timestamp,
+        'x-signature': signature,
+      },
+      body,
+    });
+
+    const envelope =
+      (await response.json()) as ApiEnvelope<BillingWebhookResponse>;
+    if (!response.ok || envelope.success === false) {
+      throw new Error(
+        envelope.error?.message ?? `Webhook failed with HTTP ${response.status}`,
+      );
+    }
+
+    return envelope.data as BillingWebhookResponse;
+  }
+
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     const response = await fetch(`${this.settings.apiBaseUrl}${path}`, {
       ...init,
@@ -60,6 +90,25 @@ export class ApiClient {
 
     return envelope.data as T;
   }
+}
+
+async function hmacSha256(secret: string, message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    {
+      name: 'HMAC',
+      hash: 'SHA-256',
+    },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export interface HealthData {
@@ -159,4 +208,27 @@ export interface AuditLog {
   entityId?: string | null;
   action: string;
   createdAt: string;
+}
+
+export type BillingWebhookEvent =
+  | 'payment_paid'
+  | 'subscription_cancel'
+  | 'subscription_expired'
+  | 'plan_changed';
+
+export interface BillingWebhookPayload {
+  event: BillingWebhookEvent;
+  eventId: string;
+  externalUserId: string;
+  externalSubscriptionId: string;
+  externalOrderId?: string;
+  externalPaymentId?: string;
+  externalPlanId?: string;
+  email: string;
+  status?: string;
+}
+
+export interface BillingWebhookResponse {
+  queued: boolean;
+  duplicate?: boolean;
 }
