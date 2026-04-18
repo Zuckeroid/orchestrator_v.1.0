@@ -234,6 +234,14 @@ input[type="checkbox"] {
   color: #64748b;
 }
 
+.cell-note {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(130px, 1fr));

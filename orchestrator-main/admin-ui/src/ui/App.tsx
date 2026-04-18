@@ -63,7 +63,8 @@ interface StorageBackendFormState {
 interface VpnNodeFormState {
   name: string;
   host: string;
-  apiKey: string;
+  username: string;
+  password: string;
   inboundId: string;
   subscriptionBaseUrl: string;
   capacity: string;
@@ -113,7 +114,8 @@ const emptyStorageBackendForm: StorageBackendFormState = {
 const emptyNodeForm: VpnNodeFormState = {
   name: '',
   host: '',
-  apiKey: '',
+  username: '',
+  password: '',
   inboundId: '1',
   subscriptionBaseUrl: '',
   capacity: '100',
@@ -324,6 +326,16 @@ export function App() {
 
   async function saveNode(event: FormEvent) {
     event.preventDefault();
+    const username = nodeForm.username.trim();
+    const password = nodeForm.password.trim();
+
+    if ((username || password) && (!username || !password)) {
+      setError(
+        'Enter both 3x-ui username and password, or leave both blank to keep current credentials',
+      );
+      return;
+    }
+
     const payload = {
       name: nodeForm.name,
       host: nodeForm.host,
@@ -331,7 +343,14 @@ export function App() {
       inboundId: Number(nodeForm.inboundId),
       subscriptionBaseUrl: optionalString(nodeForm.subscriptionBaseUrl) ?? null,
       capacity: Number(nodeForm.capacity),
-      ...(nodeForm.apiKey.trim() ? { apiKey: nodeForm.apiKey } : {}),
+      ...(username || password
+        ? {
+            apiKey: JSON.stringify({
+              username,
+              password,
+            }),
+          }
+        : {}),
     };
 
     await runAction(
@@ -352,7 +371,8 @@ export function App() {
     setNodeForm({
       name: node.name ?? '',
       host: node.host,
-      apiKey: '',
+      username: '',
+      password: '',
       inboundId: String(node.inboundId ?? 1),
       subscriptionBaseUrl: node.subscriptionBaseUrl ?? '',
       capacity: String(node.capacity),
@@ -900,17 +920,26 @@ function NodesPanel({
           />
         </label>
         <label>
-          3x-ui credentials
+          3x-ui username
+          <input
+            required={!isEditing}
+            placeholder={isEditing ? 'Leave blank to keep current' : 'admin'}
+            value={form.username}
+            onChange={(event) =>
+              setForm({ ...form, username: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          3x-ui password
           <input
             required={!isEditing}
             type="password"
-            placeholder={
-              isEditing
-                ? 'Leave blank to keep current credentials'
-                : '{"username":"admin","password":"secret"}'
+            placeholder={isEditing ? 'Leave blank to keep current' : 'secret'}
+            value={form.password}
+            onChange={(event) =>
+              setForm({ ...form, password: event.target.value })
             }
-            value={form.apiKey}
-            onChange={(event) => setForm({ ...form, apiKey: event.target.value })}
           />
         </label>
         <label>
@@ -969,7 +998,6 @@ function NodesPanel({
                 <th>Status</th>
                 <th>Load</th>
                 <th>Inbound</th>
-                <th>Subscription URL</th>
                 <th>Last error</th>
                 <th>Action</th>
               </tr>
@@ -978,13 +1006,19 @@ function NodesPanel({
               {nodes.map((node) => (
                 <tr key={node.id}>
                   <td>{node.name ?? 'unnamed'}</td>
-                  <td>{node.host}</td>
+                  <td>
+                    <a href={node.host} target="_blank" rel="noreferrer">
+                      {node.host}
+                    </a>
+                    {node.subscriptionBaseUrl ? (
+                      <span className="cell-note">{node.subscriptionBaseUrl}</span>
+                    ) : null}
+                  </td>
                   <td>{node.status}</td>
                   <td>
                     {node.currentLoad}/{node.capacity}
                   </td>
                   <td>{node.inboundId ?? 'none'}</td>
-                  <td>{node.subscriptionBaseUrl ?? 'panel host'}</td>
                   <td>
                     {node.lastError ? (
                       <span className="error-text">{node.lastError}</span>
@@ -1188,7 +1222,8 @@ function ProvisionsPanel({
               <th>Status</th>
               <th>Storage</th>
               <th>VPN Login</th>
-              <th>Expires</th>
+              <th>Days left</th>
+              <th>Delete after</th>
               <th>Link</th>
               <th>Action</th>
             </tr>
@@ -1201,7 +1236,8 @@ function ProvisionsPanel({
                 <td>{provision.status}</td>
                 <td>{provision.storageStatus}</td>
                 <td>{provision.vpnLogin ?? 'none'}</td>
-                <td>{formatDate(provision.serviceExpiresAt)}</td>
+                <td>{formatDaysLeft(provision.serviceExpiresAt)}</td>
+                <td>{formatDate(provision.deleteAfter)}</td>
                 <td>
                   {provision.subscriptionLink ? (
                     <a
@@ -1546,6 +1582,26 @@ function formatDate(value?: string | null): string {
   }
 
   return new Date(value).toLocaleString();
+}
+
+function formatDaysLeft(value?: string | null): string {
+  if (!value) {
+    return 'none';
+  }
+
+  const expiresAt = new Date(value).getTime();
+  const diffMs = expiresAt - Date.now();
+  const days = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+
+  if (days < 0) {
+    return `expired ${Math.abs(days)}d ago`;
+  }
+
+  if (days === 0) {
+    return 'less than 1d';
+  }
+
+  return `${days}d`;
 }
 
 function createLocalDateTimeValue(daysFromNow: number): string {

@@ -124,12 +124,14 @@ export class PlansService {
     externalPlanId: string | undefined,
   ): Promise<ResolvedPlan> {
     if (!externalPlanId) {
-      return this.getDefaultPlan();
+      throw new NotFoundException('Billing plan ID is required');
     }
 
     const plan = await this.repository.findOneBy({ externalPlanId });
     if (!plan) {
-      return this.getDefaultPlan(externalPlanId);
+      throw new NotFoundException(
+        `Plan mapping not found for billing plan: ${externalPlanId}`,
+      );
     }
 
     return {
@@ -139,16 +141,6 @@ export class PlansService {
       storageSizeBytes: Number(plan.storageSize ?? 0),
       vpnEnabled: plan.vpnEnabled,
       storageEnabled: plan.storageEnabled,
-    };
-  }
-
-  private getDefaultPlan(externalPlanId = 'default'): ResolvedPlan {
-    return {
-      planId: null,
-      maxDevices: 3,
-      storageSizeBytes: 10 * 1024 * 1024 * 1024,
-      vpnEnabled: true,
-      storageEnabled: true,
     };
   }
 }
