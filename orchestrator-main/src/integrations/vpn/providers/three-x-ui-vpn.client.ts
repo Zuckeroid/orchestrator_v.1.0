@@ -364,7 +364,7 @@ export class ThreeXuiVpnClient implements VpnClient {
   private buildSubscriptionLink(node: VpnNodeConfig, subId: string): string {
     const base = node.subscriptionBaseUrl?.trim();
     if (base) {
-      return this.url({ ...node, host: base }, `${this.subscriptionPath()}/${subId}`);
+      return this.url({ ...node, host: base }, subId);
     }
 
     return this.url(node, `${this.subscriptionPath()}/${subId}`);

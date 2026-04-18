@@ -926,9 +926,9 @@ function NodesPanel({
           />
         </label>
         <label>
-          Subscription base URL
+          Subscription URL prefix
           <input
-            placeholder="https://213.165.37.175:2096"
+            placeholder="https://109.120.140.251:2096/sub_9fK3xL8pQ2mZ7rT"
             value={form.subscriptionBaseUrl}
             onChange={(event) =>
               setForm({ ...form, subscriptionBaseUrl: event.target.value })
