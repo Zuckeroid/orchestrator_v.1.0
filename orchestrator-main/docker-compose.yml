@@ -1,6 +1,7 @@
 services:
   api:
     build: .
+    restart: unless-stopped
     env_file:
       - path: .env.example
       - path: .env
@@ -17,23 +18,44 @@ services:
       PROVISION_CLEANUP_CRON: ${PROVISION_CLEANUP_CRON:-*/15 * * * *}
       PROVISION_CLEANUP_LIMIT: ${PROVISION_CLEANUP_LIMIT:-50}
     ports:
-      - "${API_BIND_HOST:-0.0.0.0}:${PORT:-3000}:3000"
+      - "${API_BIND_HOST:-127.0.0.1}:${PORT:-3000}:3000"
     depends_on:
       - redis
       - db
 
+  admin-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin-ui
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_UI_BIND_HOST:-0.0.0.0}:${ADMIN_UI_PORT:-8080}:80"
+    depends_on:
+      - api
+
   redis:
     image: redis:7
     container_name: redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
 
   db:
     image: postgres:15
     container_name: orchestrator-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-orchestrator}
       POSTGRES_PASSWORD: ${DB_PASS:-orchestrator}
       POSTGRES_DB: ${DB_NAME:-orchestrator}
     ports:
       - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+  redis_data:
