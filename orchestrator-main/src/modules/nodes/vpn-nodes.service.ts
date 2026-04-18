@@ -132,6 +132,9 @@ export class VpnNodesService {
       });
 
       node.lastError = null;
+      if (result.clientCount !== undefined) {
+        node.currentLoad = result.clientCount;
+      }
       await this.repository.save(node);
 
       return result;
