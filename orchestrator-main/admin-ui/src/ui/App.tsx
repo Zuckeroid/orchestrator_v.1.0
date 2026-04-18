@@ -59,6 +59,14 @@ interface StorageBackendFormState {
   capacity: string;
 }
 
+interface VpnNodeFormState {
+  name: string;
+  host: string;
+  apiKey: string;
+  inboundId: string;
+  capacity: string;
+}
+
 interface ViewState {
   health?: HealthData;
   queue?: QueueOverview;
@@ -100,6 +108,14 @@ const emptyStorageBackendForm: StorageBackendFormState = {
   capacity: '100',
 };
 
+const emptyNodeForm: VpnNodeFormState = {
+  name: '',
+  host: '',
+  apiKey: '',
+  inboundId: '1',
+  capacity: '100',
+};
+
 function createWebhookForm(): WebhookFormState {
   const suffix = Date.now();
 
@@ -130,13 +146,8 @@ export function App() {
     createWebhookForm(),
   );
   const [webhookResult, setWebhookResult] = useState('');
-  const [nodeForm, setNodeForm] = useState({
-    name: '',
-    host: '',
-    apiKey: '',
-    inboundId: '1',
-    capacity: '100',
-  });
+  const [nodeForm, setNodeForm] = useState<VpnNodeFormState>(emptyNodeForm);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [storageBackendForm, setStorageBackendForm] =
     useState<StorageBackendFormState>(emptyStorageBackendForm);
 
@@ -306,29 +317,60 @@ export function App() {
     setWebhookResult('');
   }
 
-  async function createNode(event: FormEvent) {
+  async function saveNode(event: FormEvent) {
     event.preventDefault();
-    await runAction('VPN node created', async () => {
-      await api.post('/nodes/vpn', {
-        name: nodeForm.name,
-        host: nodeForm.host,
-        apiKey: nodeForm.apiKey,
-        apiVersion: '3x-ui',
-        inboundId: Number(nodeForm.inboundId),
-        capacity: Number(nodeForm.capacity),
-      });
-      setNodeForm({
-        name: '',
-        host: '',
-        apiKey: '',
-        inboundId: '1',
-        capacity: '100',
-      });
+    const payload = {
+      name: nodeForm.name,
+      host: nodeForm.host,
+      apiVersion: '3x-ui',
+      inboundId: Number(nodeForm.inboundId),
+      capacity: Number(nodeForm.capacity),
+      ...(nodeForm.apiKey.trim() ? { apiKey: nodeForm.apiKey } : {}),
+    };
+
+    await runAction(
+      editingNodeId ? 'VPN node updated' : 'VPN node created',
+      async () => {
+        if (editingNodeId) {
+          await api.patch(`/nodes/vpn/${editingNodeId}`, payload);
+        } else {
+          await api.post('/nodes/vpn', payload);
+        }
+        resetNodeForm();
+      },
+    );
+  }
+
+  function editNode(node: VpnNode) {
+    setEditingNodeId(node.id);
+    setNodeForm({
+      name: node.name ?? '',
+      host: node.host,
+      apiKey: '',
+      inboundId: String(node.inboundId ?? 1),
+      capacity: String(node.capacity),
     });
+    setActiveTab('nodes');
+    setStatus(`Editing ${node.name ?? node.host}`);
+  }
+
+  function resetNodeForm() {
+    setEditingNodeId(null);
+    setNodeForm(emptyNodeForm);
   }
 
   async function disableNode(id: string) {
     await runAction('VPN node disabled', () => api.delete(`/nodes/vpn/${id}`));
+  }
+
+  async function enableNode(id: string) {
+    await runAction('VPN node enabled', () =>
+      api.patch(`/nodes/vpn/${id}`, {
+        isActive: true,
+        status: 'active',
+        lastError: null,
+      }),
+    );
   }
 
   async function checkNode(id: string) {
@@ -515,9 +557,13 @@ export function App() {
             nodes={view.nodes}
             form={nodeForm}
             setForm={setNodeForm}
-            onCreate={createNode}
+            editingNodeId={editingNodeId}
+            onSubmit={saveNode}
+            onCancel={resetNodeForm}
+            onEdit={editNode}
             onCheck={checkNode}
             onDisable={disableNode}
+            onEnable={enableNode}
           />
         ) : null}
         {activeTab === 'storage' ? (
@@ -805,33 +851,31 @@ function NodesPanel({
   nodes,
   form,
   setForm,
-  onCreate,
+  editingNodeId,
+  onSubmit,
+  onCancel,
+  onEdit,
   onCheck,
   onDisable,
+  onEnable,
 }: {
   nodes: VpnNode[];
-  form: {
-    name: string;
-    host: string;
-    apiKey: string;
-    inboundId: string;
-    capacity: string;
-  };
-  setForm: (form: {
-    name: string;
-    host: string;
-    apiKey: string;
-    inboundId: string;
-    capacity: string;
-  }) => void;
-  onCreate: (event: FormEvent) => void;
+  form: VpnNodeFormState;
+  setForm: (form: VpnNodeFormState) => void;
+  editingNodeId: string | null;
+  onSubmit: (event: FormEvent) => void;
+  onCancel: () => void;
+  onEdit: (node: VpnNode) => void;
   onCheck: (id: string) => void;
   onDisable: (id: string) => void;
+  onEnable: (id: string) => void;
 }) {
+  const isEditing = editingNodeId !== null;
+
   return (
     <section className="split-layout">
-      <form className="panel form-panel" onSubmit={onCreate}>
-        <h2>Add VPN Node</h2>
+      <form className="panel form-panel" onSubmit={onSubmit}>
+        <h2>{isEditing ? 'Edit VPN Node' : 'Add VPN Node'}</h2>
         <label>
           Name
           <input
@@ -851,9 +895,13 @@ function NodesPanel({
         <label>
           3x-ui credentials
           <input
-            required
+            required={!isEditing}
             type="password"
-            placeholder='{"username":"admin","password":"secret"}'
+            placeholder={
+              isEditing
+                ? 'Leave blank to keep current credentials'
+                : '{"username":"admin","password":"secret"}'
+            }
             value={form.apiKey}
             onChange={(event) => setForm({ ...form, apiKey: event.target.value })}
           />
@@ -882,9 +930,16 @@ function NodesPanel({
             }
           />
         </label>
-        <button className="primary" type="submit">
-          Add node
-        </button>
+        <div className="form-actions">
+          <button className="primary" type="submit">
+            {isEditing ? 'Save node' : 'Add node'}
+          </button>
+          {isEditing ? (
+            <button type="button" onClick={onCancel}>
+              Cancel
+            </button>
+          ) : null}
+        </div>
       </form>
       <section className="panel table-panel">
         <h2>VPN Nodes</h2>
@@ -920,12 +975,25 @@ function NodesPanel({
                   </td>
                   <td>
                     <div className="row-actions">
+                      <button onClick={() => onEdit(node)} type="button">
+                        Edit
+                      </button>
                       <button onClick={() => onCheck(node.id)} type="button">
                         Check
                       </button>
-                      <button onClick={() => onDisable(node.id)} type="button">
-                        Disable
-                      </button>
+                      {node.isActive ? (
+                        <button onClick={() => onDisable(node.id)} type="button">
+                          Disable
+                        </button>
+                      ) : (
+                        <button
+                          className="primary"
+                          onClick={() => onEnable(node.id)}
+                          type="button"
+                        >
+                          Enable
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
