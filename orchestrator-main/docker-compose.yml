@@ -28,6 +28,9 @@ services:
       context: .
       dockerfile: Dockerfile.admin-ui
     restart: unless-stopped
+    environment:
+      ADMIN_UI_BASIC_AUTH_USER: ${ADMIN_UI_BASIC_AUTH_USER:-admin}
+      ADMIN_UI_BASIC_AUTH_PASSWORD: ${ADMIN_UI_BASIC_AUTH_PASSWORD:?ADMIN_UI_BASIC_AUTH_PASSWORD is required}
     ports:
       - "${ADMIN_UI_BIND_HOST:-0.0.0.0}:${ADMIN_UI_PORT:-8080}:80"
     depends_on:

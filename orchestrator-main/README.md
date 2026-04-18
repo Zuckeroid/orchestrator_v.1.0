@@ -28,6 +28,7 @@ openssl rand -hex 32
 Set at least:
 
 - `ADMIN_API_KEY`
+- `ADMIN_UI_BASIC_AUTH_PASSWORD`
 - `WEBHOOK_API_KEY`
 - `WEBHOOK_SIGNING_SECRET`
 - `DATA_ENCRYPTION_KEY`
@@ -60,11 +61,19 @@ With the default compose settings:
 - Admin UI is available on `http://YOUR_ORCHESTRATOR_HOST:8080`.
 - API is bound to `127.0.0.1:3000`.
 - Admin UI proxies browser requests from `/api/v1` to the API container.
+- Admin UI and proxied admin API requests are protected by Basic Auth.
+- `/api/v1/webhook/billing` is not protected by Basic Auth, so the billing
+  system can call it. It is still protected by the webhook API key and signature.
 - Postgres and Redis are bound to `127.0.0.1`.
 
 5. Admin UI settings:
 
-Use these values in the settings band:
+Open `http://YOUR_ORCHESTRATOR_HOST:8080` and pass Basic Auth with:
+
+- username: value of `ADMIN_UI_BASIC_AUTH_USER`
+- password: value of `ADMIN_UI_BASIC_AUTH_PASSWORD`
+
+Then use these values in the settings band:
 
 - `API base URL`: `/api/v1`
 - `Admin key`: value of `ADMIN_API_KEY`
