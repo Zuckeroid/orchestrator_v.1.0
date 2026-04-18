@@ -7,8 +7,6 @@ export function loadSettings(): ApiSettings {
     apiBaseUrl: '/api/v1',
     adminApiKey: '',
     adminActor: 'admin',
-    webhookApiKey: '',
-    webhookSigningSecret: '',
   };
 
   const saved = localStorage.getItem(STORAGE_KEY);

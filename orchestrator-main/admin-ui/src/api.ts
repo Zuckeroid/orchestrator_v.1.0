@@ -2,8 +2,6 @@ export interface ApiSettings {
   apiBaseUrl: string;
   adminApiKey: string;
   adminActor: string;
-  webhookApiKey: string;
-  webhookSigningSecret: string;
 }
 
 export interface ApiEnvelope<T> {
@@ -44,29 +42,10 @@ export class ApiClient {
   async postBillingWebhook(
     payload: BillingWebhookPayload,
   ): Promise<BillingWebhookResponse> {
-    const body = JSON.stringify(payload);
-    const timestamp = String(Math.floor(Date.now() / 1000));
-    const signature = await hmacSha256(this.settings.webhookSigningSecret, body);
-    const response = await fetch(`${this.settings.apiBaseUrl}/webhook/billing`, {
+    return this.request<BillingWebhookResponse>('/webhook/billing/test', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.settings.webhookApiKey,
-        'x-timestamp': timestamp,
-        'x-signature': signature,
-      },
-      body,
+      body: JSON.stringify(payload),
     });
-
-    const envelope =
-      (await response.json()) as ApiEnvelope<BillingWebhookResponse>;
-    if (!response.ok || envelope.success === false) {
-      throw new Error(
-        envelope.error?.message ?? `Webhook failed with HTTP ${response.status}`,
-      );
-    }
-
-    return envelope.data as BillingWebhookResponse;
   }
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
@@ -74,9 +53,11 @@ export class ApiClient {
       ...init,
       headers: {
         'Content-Type': 'application/json',
-        'X-Admin-Api-Key': this.settings.adminApiKey,
+        ...(this.settings.adminApiKey
+          ? { 'X-Admin-Api-Key': this.settings.adminApiKey }
+          : {}),
         'X-Admin-Actor': this.settings.adminActor,
-        'X-Request-Id': crypto.randomUUID(),
+        'X-Request-Id': createRequestId(),
         ...(init.headers ?? {}),
       },
     });
@@ -92,23 +73,31 @@ export class ApiClient {
   }
 }
 
-async function hmacSha256(secret: string, message: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    {
-      name: 'HMAC',
-      hash: 'SHA-256',
-    },
-    false,
-    ['sign'],
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+function createRequestId(): string {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
 
-  return Array.from(new Uint8Array(signature))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'));
+
+  return [
+    hex.slice(0, 4).join(''),
+    hex.slice(4, 6).join(''),
+    hex.slice(6, 8).join(''),
+    hex.slice(8, 10).join(''),
+    hex.slice(10, 16).join(''),
+  ].join('-');
 }
 
 export interface HealthData {

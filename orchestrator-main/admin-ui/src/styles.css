@@ -168,7 +168,7 @@ h2 {
 
 .settings-form {
   display: grid;
-  grid-template-columns: minmax(180px, 1.3fr) minmax(180px, 1fr) minmax(140px, 0.7fr) auto auto;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(180px, 1fr) minmax(140px, 0.7fr) auto auto;
   gap: 12px;
   align-items: end;
 }

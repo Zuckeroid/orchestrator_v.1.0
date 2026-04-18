@@ -141,11 +141,11 @@ export function App() {
     useState<StorageBackendFormState>(emptyStorageBackendForm);
 
   const api = useMemo(() => new ApiClient(settings), [settings]);
-  const isConfigured = settings.adminApiKey.trim().length > 0;
+  const isConfigured = settings.apiBaseUrl.trim().length > 0;
 
   async function refreshAll() {
     if (!isConfigured) {
-      setStatus('Enter an admin key to connect');
+      setStatus('Enter an API base URL to connect');
       return;
     }
 
@@ -280,11 +280,6 @@ export function App() {
 
   async function sendWebhookTest(event: FormEvent) {
     event.preventDefault();
-    if (!settings.webhookApiKey || !settings.webhookSigningSecret) {
-      setError('Enter webhook API key and signing secret in settings');
-      return;
-    }
-
     await runAction('Webhook test sent', async () => {
       const result = await api.postBillingWebhook(buildWebhookPayload(webhookForm));
       setWebhookResult(
@@ -464,9 +459,10 @@ export function App() {
               />
             </label>
             <label>
-              Admin key
+              Admin key (direct API only)
               <input
                 type="password"
+                placeholder="Auto via VPS proxy"
                 value={draftSettings.adminApiKey}
                 onChange={(event) =>
                   setDraftSettings({
@@ -484,32 +480,6 @@ export function App() {
                   setDraftSettings({
                     ...draftSettings,
                     adminActor: event.target.value,
-                  })
-                }
-              />
-            </label>
-            <label>
-              Webhook key
-              <input
-                type="password"
-                value={draftSettings.webhookApiKey}
-                onChange={(event) =>
-                  setDraftSettings({
-                    ...draftSettings,
-                    webhookApiKey: event.target.value,
-                  })
-                }
-              />
-            </label>
-            <label>
-              Webhook secret
-              <input
-                type="password"
-                value={draftSettings.webhookSigningSecret}
-                onChange={(event) =>
-                  setDraftSettings({
-                    ...draftSettings,
-                    webhookSigningSecret: event.target.value,
                   })
                 }
               />

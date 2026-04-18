@@ -27,6 +27,16 @@ export class WebhookService {
     this.validateTimestamp(headers);
     this.validateSignature(headers, rawBody);
 
+    return this.enqueuePayload(payload);
+  }
+
+  async handleTrusted(body: unknown) {
+    const payload = this.parsePayload(body);
+
+    return this.enqueuePayload(payload);
+  }
+
+  private async enqueuePayload(payload: BillingEventPayload) {
     const claim = await this.processedEventsService.claim(payload);
     if (claim.duplicate) {
       return {

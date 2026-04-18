@@ -61,6 +61,7 @@ With the default compose settings:
 - Admin UI is available on `http://YOUR_ORCHESTRATOR_HOST:8080`.
 - API is bound to `127.0.0.1:3000`.
 - Admin UI proxies browser requests from `/api/v1` to the API container.
+- The proxy injects `X-Admin-Api-Key` from `ADMIN_API_KEY`.
 - Admin UI and proxied admin API requests are protected by Basic Auth.
 - `/api/v1/webhook/billing` is not protected by Basic Auth, so the billing
   system can call it. It is still protected by the webhook API key and signature.
@@ -76,10 +77,8 @@ Open `http://YOUR_ORCHESTRATOR_HOST:8080` and pass Basic Auth with:
 Then use these values in the settings band:
 
 - `API base URL`: `/api/v1`
-- `Admin key`: value of `ADMIN_API_KEY`
+- `Admin key`: leave empty when using the VPS proxy
 - `Actor`: `admin`
-- `Webhook key`: value of `WEBHOOK_API_KEY`
-- `Webhook secret`: value of `WEBHOOK_SIGNING_SECRET`
 
 ## Notes
 
