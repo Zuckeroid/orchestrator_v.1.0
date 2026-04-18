@@ -8,7 +8,7 @@ Backend and admin UI for provisioning My Storage users from billing events.
 
 ```bash
 cd /opt
-git clone https://github.com/Zuckeroid/orchestrator.git
+git clone https://github.com/Zuckeroid/orchestrator_v.1.0.git orchestrator
 cd orchestrator/orchestrator-main
 ```
 
