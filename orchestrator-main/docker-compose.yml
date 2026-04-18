@@ -2,7 +2,9 @@ services:
   api:
     build: .
     env_file:
-      - .env.example
+      - path: .env.example
+      - path: .env
+        required: false
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       ADMIN_UI_ORIGIN: ${ADMIN_UI_ORIGIN:-http://localhost:5173}
@@ -15,7 +17,7 @@ services:
       PROVISION_CLEANUP_CRON: ${PROVISION_CLEANUP_CRON:-*/15 * * * *}
       PROVISION_CLEANUP_LIMIT: ${PROVISION_CLEANUP_LIMIT:-50}
     ports:
-      - "3000:3000"
+      - "${API_BIND_HOST:-0.0.0.0}:${PORT:-3000}:3000"
     depends_on:
       - redis
       - db
@@ -24,14 +26,14 @@ services:
     image: redis:7
     container_name: redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
 
   db:
     image: postgres:16
     container_name: orchestrator-db
     environment:
-      POSTGRES_USER: orchestrator
-      POSTGRES_PASSWORD: orchestrator
-      POSTGRES_DB: orchestrator
+      POSTGRES_USER: ${DB_USER:-orchestrator}
+      POSTGRES_PASSWORD: ${DB_PASS:-orchestrator}
+      POSTGRES_DB: ${DB_NAME:-orchestrator}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
