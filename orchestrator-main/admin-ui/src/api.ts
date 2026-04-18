@@ -154,6 +154,7 @@ export interface VpnNode {
   apiKey: string;
   apiVersion?: string | null;
   inboundId?: number | null;
+  subscriptionBaseUrl?: string | null;
   status: string;
   lastError?: string | null;
   capacity: number;
@@ -198,6 +199,7 @@ export interface Provision {
   vpnNodeId?: string | null;
   vpnLogin?: string | null;
   subscriptionLink?: string | null;
+  serviceExpiresAt?: string | null;
   deleteAfter?: string | null;
   deletedAt?: string | null;
   error?: string | null;
@@ -241,6 +243,7 @@ export interface BillingWebhookPayload {
   externalPlanId?: string;
   email: string;
   status?: string;
+  expiresAt?: string;
 }
 
 export interface BillingWebhookResponse {

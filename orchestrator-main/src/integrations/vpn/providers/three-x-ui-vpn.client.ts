@@ -95,6 +95,7 @@ export class ThreeXuiVpnClient implements VpnClient {
       email: patch.email ?? login,
       externalSubscriptionId: patch.externalSubscriptionId ?? login,
       limitIp: patch.limitIp ?? 0,
+      expiresAt: patch.expiresAt,
     };
     const client = this.buildClientSettings(
       login,
@@ -135,7 +136,9 @@ export class ThreeXuiVpnClient implements VpnClient {
       id: clientId,
       email: this.buildClientEmail(input),
       enable,
-      expiryTime: Number(process.env.VPN_3XUI_CLIENT_EXPIRY_TIME ?? 0),
+      expiryTime:
+        input.expiresAt?.getTime() ??
+        Number(process.env.VPN_3XUI_CLIENT_EXPIRY_TIME ?? 0),
       flow: process.env.VPN_3XUI_CLIENT_FLOW ?? 'xtls-rprx-vision',
       limitIp: Math.max(Number(input.limitIp ?? 0), 0),
       reset: 0,
@@ -359,6 +362,11 @@ export class ThreeXuiVpnClient implements VpnClient {
   }
 
   private buildSubscriptionLink(node: VpnNodeConfig, subId: string): string {
+    const base = node.subscriptionBaseUrl?.trim();
+    if (base) {
+      return this.url({ ...node, host: base }, `${this.subscriptionPath()}/${subId}`);
+    }
+
     return this.url(node, `${this.subscriptionPath()}/${subId}`);
   }
 

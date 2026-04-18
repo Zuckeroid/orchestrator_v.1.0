@@ -115,6 +115,8 @@ export class ProvisioningService {
     );
 
     await this.provisionsService.markProvisioning(provision);
+    const serviceExpiresAt =
+      this.parseServiceExpiresAt(event) ?? provision.serviceExpiresAt ?? undefined;
 
     let newVpnNode: VpnNodeEntity | undefined;
     let vpn: VpnClientResult | undefined;
@@ -136,6 +138,7 @@ export class ProvisioningService {
             email: event.email,
             externalSubscriptionId: event.externalSubscriptionId,
             limitIp: plan.maxDevices,
+            expiresAt: serviceExpiresAt,
             enable: true,
           });
           vpn = {
@@ -148,6 +151,7 @@ export class ProvisioningService {
             email: event.email,
             externalSubscriptionId: event.externalSubscriptionId,
             limitIp: plan.maxDevices,
+            expiresAt: serviceExpiresAt,
           });
         }
 
@@ -217,6 +221,7 @@ export class ProvisioningService {
       await this.provisionsService.markActive(provision, {
         planId: plan.planId,
         lastExternalPaymentId: event.externalPaymentId,
+        serviceExpiresAt,
         vpnNodeId: provision.vpnNodeId ?? newVpnNode?.id ?? null,
         vpnLogin: vpn?.login ?? provision.vpnLogin ?? null,
         vpnPassword: vpn?.password ?? provision.vpnPassword ?? null,
@@ -393,6 +398,10 @@ export class ProvisioningService {
           email: event.email || provision.email,
           externalSubscriptionId: event.externalSubscriptionId,
           limitIp: plan.maxDevices,
+          expiresAt:
+            this.parseServiceExpiresAt(event) ??
+            provision.serviceExpiresAt ??
+            undefined,
           enable: plan.vpnEnabled,
         },
       );
@@ -422,7 +431,21 @@ export class ProvisioningService {
       apiKey: node.apiKey,
       apiVersion: node.apiVersion ?? undefined,
       inboundId: node.inboundId ?? undefined,
+      subscriptionBaseUrl: node.subscriptionBaseUrl ?? undefined,
     };
+  }
+
+  private parseServiceExpiresAt(event: BillingEventPayload): Date | undefined {
+    if (!event.expiresAt) {
+      return undefined;
+    }
+
+    const expiresAt = new Date(event.expiresAt);
+    if (Number.isNaN(expiresAt.getTime())) {
+      return undefined;
+    }
+
+    return expiresAt;
   }
 
   private toStorageBackendConfig(

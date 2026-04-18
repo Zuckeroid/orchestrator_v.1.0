@@ -14,6 +14,6 @@ export interface BillingEventPayload {
   externalPlanId?: string;
   email: string;
   status?: string;
+  expiresAt?: string;
   rawPayload?: Record<string, unknown>;
 }
-

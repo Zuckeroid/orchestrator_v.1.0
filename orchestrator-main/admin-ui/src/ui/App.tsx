@@ -46,6 +46,7 @@ interface WebhookFormState {
   externalPlanId: string;
   email: string;
   status: string;
+  expiresAt: string;
 }
 
 interface StorageBackendFormState {
@@ -64,6 +65,7 @@ interface VpnNodeFormState {
   host: string;
   apiKey: string;
   inboundId: string;
+  subscriptionBaseUrl: string;
   capacity: string;
 }
 
@@ -113,6 +115,7 @@ const emptyNodeForm: VpnNodeFormState = {
   host: '',
   apiKey: '',
   inboundId: '1',
+  subscriptionBaseUrl: '',
   capacity: '100',
 };
 
@@ -129,6 +132,7 @@ function createWebhookForm(): WebhookFormState {
     externalPlanId: '',
     email: `client-${suffix}@example.com`,
     status: 'paid',
+    expiresAt: createLocalDateTimeValue(30),
   };
 }
 
@@ -313,6 +317,7 @@ export function App() {
       externalOrderId: next.externalOrderId,
       externalPaymentId: next.externalPaymentId,
       email: next.email,
+      expiresAt: next.expiresAt,
     }));
     setWebhookResult('');
   }
@@ -324,6 +329,7 @@ export function App() {
       host: nodeForm.host,
       apiVersion: '3x-ui',
       inboundId: Number(nodeForm.inboundId),
+      subscriptionBaseUrl: optionalString(nodeForm.subscriptionBaseUrl) ?? null,
       capacity: Number(nodeForm.capacity),
       ...(nodeForm.apiKey.trim() ? { apiKey: nodeForm.apiKey } : {}),
     };
@@ -348,6 +354,7 @@ export function App() {
       host: node.host,
       apiKey: '',
       inboundId: String(node.inboundId ?? 1),
+      subscriptionBaseUrl: node.subscriptionBaseUrl ?? '',
       capacity: String(node.capacity),
     });
     setActiveTab('nodes');
@@ -919,6 +926,16 @@ function NodesPanel({
           />
         </label>
         <label>
+          Subscription base URL
+          <input
+            placeholder="https://213.165.37.175:2096"
+            value={form.subscriptionBaseUrl}
+            onChange={(event) =>
+              setForm({ ...form, subscriptionBaseUrl: event.target.value })
+            }
+          />
+        </label>
+        <label>
           Capacity
           <input
             required
@@ -952,6 +969,7 @@ function NodesPanel({
                 <th>Status</th>
                 <th>Load</th>
                 <th>Inbound</th>
+                <th>Subscription URL</th>
                 <th>Last error</th>
                 <th>Action</th>
               </tr>
@@ -966,6 +984,7 @@ function NodesPanel({
                     {node.currentLoad}/{node.capacity}
                   </td>
                   <td>{node.inboundId ?? 'none'}</td>
+                  <td>{node.subscriptionBaseUrl ?? 'panel host'}</td>
                   <td>
                     {node.lastError ? (
                       <span className="error-text">{node.lastError}</span>
@@ -1169,6 +1188,7 @@ function ProvisionsPanel({
               <th>Status</th>
               <th>Storage</th>
               <th>VPN Login</th>
+              <th>Expires</th>
               <th>Link</th>
               <th>Action</th>
             </tr>
@@ -1181,6 +1201,7 @@ function ProvisionsPanel({
                 <td>{provision.status}</td>
                 <td>{provision.storageStatus}</td>
                 <td>{provision.vpnLogin ?? 'none'}</td>
+                <td>{formatDate(provision.serviceExpiresAt)}</td>
                 <td>
                   {provision.subscriptionLink ? (
                     <a
@@ -1345,6 +1366,16 @@ function WebhookTesterPanel({
             }
           />
         </label>
+        <label>
+          Expires at
+          <input
+            type="datetime-local"
+            value={form.expiresAt}
+            onChange={(event) =>
+              setForm({ ...form, expiresAt: event.target.value })
+            }
+          />
+        </label>
         <div className="form-actions">
           <button className="primary" type="submit">
             Send webhook
@@ -1499,6 +1530,7 @@ function buildWebhookPayload(form: WebhookFormState): BillingWebhookPayload {
     externalPlanId: optionalString(form.externalPlanId),
     email: form.email.trim(),
     status: optionalString(form.status),
+    expiresAt: dateTimeLocalToIso(form.expiresAt),
   };
 }
 
@@ -1506,4 +1538,34 @@ function optionalString(value: string): string | undefined {
   const trimmed = value.trim();
 
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) {
+    return 'none';
+  }
+
+  return new Date(value).toLocaleString();
+}
+
+function createLocalDateTimeValue(daysFromNow: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+
+  return toDateTimeLocalValue(date);
+}
+
+function toDateTimeLocalValue(date: Date): string {
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function dateTimeLocalToIso(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return new Date(trimmed).toISOString();
 }

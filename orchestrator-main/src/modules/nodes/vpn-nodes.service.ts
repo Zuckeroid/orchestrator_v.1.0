@@ -17,6 +17,7 @@ export interface CreateVpnNodeInput {
   apiKey: string;
   apiVersion?: string;
   inboundId?: number;
+  subscriptionBaseUrl?: string;
   capacity: number;
 }
 
@@ -26,6 +27,7 @@ export interface UpdateVpnNodeInput {
   apiKey?: string;
   apiVersion?: string | null;
   inboundId?: number | null;
+  subscriptionBaseUrl?: string | null;
   capacity?: number;
   isActive?: boolean;
   status?: VpnNodeStatus;
@@ -65,6 +67,7 @@ export class VpnNodesService {
       apiKey: input.apiKey,
       apiVersion: input.apiVersion,
       inboundId: input.inboundId,
+      subscriptionBaseUrl: input.subscriptionBaseUrl,
       capacity: input.capacity,
       currentLoad: 0,
       isActive: true,
@@ -95,6 +98,9 @@ export class VpnNodesService {
     }
     if (input.inboundId !== undefined) {
       node.inboundId = input.inboundId;
+    }
+    if (input.subscriptionBaseUrl !== undefined) {
+      node.subscriptionBaseUrl = input.subscriptionBaseUrl;
     }
     if (input.capacity !== undefined) {
       node.capacity = input.capacity;

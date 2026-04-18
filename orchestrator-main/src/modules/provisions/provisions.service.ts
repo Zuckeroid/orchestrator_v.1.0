@@ -125,6 +125,7 @@ export class ProvisionsService {
       vpnLogin?: string | null;
       vpnPassword?: string | null;
       subscriptionLink?: string | null;
+      serviceExpiresAt?: Date | null;
       storageBackendId?: string | null;
       storageBucket?: string | null;
       storageCredentialsEncrypted?: Record<string, unknown> | null;

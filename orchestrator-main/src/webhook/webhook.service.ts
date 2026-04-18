@@ -78,6 +78,7 @@ export class WebhookService {
       externalPlanId: this.getOptionalString(body, 'externalPlanId'),
       email: this.getString(body, 'email'),
       status: this.getOptionalString(body, 'status'),
+      expiresAt: this.getOptionalString(body, 'expiresAt'),
       rawPayload: body,
     };
 
@@ -108,6 +109,16 @@ export class WebhookService {
 
     if (payload.event === 'plan_changed') {
       this.requireField(payload.externalPlanId, 'externalPlanId');
+    }
+
+    if (payload.expiresAt) {
+      const timestamp = Date.parse(payload.expiresAt);
+      if (!Number.isFinite(timestamp)) {
+        throw new InvalidWebhookError(
+          'INVALID_PAYLOAD',
+          'expiresAt must be an ISO date string',
+        );
+      }
     }
   }
 

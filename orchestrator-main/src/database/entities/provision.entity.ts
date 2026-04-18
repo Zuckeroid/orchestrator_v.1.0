@@ -92,6 +92,9 @@ export class ProvisionEntity {
   @Column({ name: 'delete_after', type: 'timestamp', nullable: true })
   deleteAfter?: Date | null;
 
+  @Column({ name: 'service_expires_at', type: 'timestamp', nullable: true })
+  serviceExpiresAt?: Date | null;
+
   @Index()
   @Column({ type: 'text' })
   status!: ProvisionStatus;
@@ -111,4 +114,3 @@ export class ProvisionEntity {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 }
-

@@ -29,6 +29,9 @@ export class VpnNodeEntity {
   @Column({ name: 'inbound_id', type: 'integer', nullable: true })
   inboundId?: number | null;
 
+  @Column({ name: 'subscription_base_url', type: 'text', nullable: true })
+  subscriptionBaseUrl?: string | null;
+
   @Column({ type: 'text', default: '3x-ui' })
   type!: string;
 
@@ -56,4 +59,3 @@ export class VpnNodeEntity {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 }
-

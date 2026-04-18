@@ -30,6 +30,10 @@ export class CreateVpnNodeDto {
   @Min(0)
   inboundId?: number;
 
+  @IsOptional()
+  @IsString()
+  subscriptionBaseUrl?: string;
+
   @Type(() => Number)
   @IsInt()
   @Min(1)

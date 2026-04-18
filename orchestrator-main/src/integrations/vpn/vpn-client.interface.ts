@@ -4,12 +4,14 @@ export interface VpnNodeConfig {
   apiKey: string;
   apiVersion?: string;
   inboundId?: number;
+  subscriptionBaseUrl?: string;
 }
 
 export interface CreateVpnClientInput {
   email: string;
   externalSubscriptionId: string;
   limitIp: number;
+  expiresAt?: Date;
 }
 
 export interface VpnClientResult {

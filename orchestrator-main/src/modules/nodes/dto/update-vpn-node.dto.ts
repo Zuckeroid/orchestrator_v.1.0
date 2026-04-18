@@ -40,6 +40,10 @@ export class UpdateVpnNodeDto {
   inboundId?: number | null;
 
   @IsOptional()
+  @IsString()
+  subscriptionBaseUrl?: string | null;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
