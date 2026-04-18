@@ -225,6 +225,15 @@ input[type="checkbox"] {
   padding: 12px 14px;
 }
 
+.error-text {
+  color: #991b1b;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: #64748b;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(130px, 1fr));

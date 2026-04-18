@@ -12,6 +12,7 @@ import {
   QueueOverview,
   StorageBackend,
   VpnNode,
+  VpnNodeCheckResult,
 } from '../api';
 import { clearSettings, loadSettings, saveSettings } from '../storage';
 
@@ -335,6 +336,23 @@ export function App() {
     await runAction('VPN node disabled', () => api.delete(`/nodes/vpn/${id}`));
   }
 
+  async function checkNode(id: string) {
+    setIsLoading(true);
+    setError('');
+    try {
+      const result = await api.post<VpnNodeCheckResult>(`/nodes/vpn/${id}/check`);
+      setStatus(
+        `${result.message}${result.clientCount !== undefined ? `; clients: ${result.clientCount}` : ''}`,
+      );
+      await refreshAll();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      await refreshAll();
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   async function createStorageBackend(event: FormEvent) {
     event.preventDefault();
     await runAction('Storage backend created', async () => {
@@ -528,6 +546,7 @@ export function App() {
             form={nodeForm}
             setForm={setNodeForm}
             onCreate={createNode}
+            onCheck={checkNode}
             onDisable={disableNode}
           />
         ) : null}
@@ -817,6 +836,7 @@ function NodesPanel({
   form,
   setForm,
   onCreate,
+  onCheck,
   onDisable,
 }: {
   nodes: VpnNode[];
@@ -835,6 +855,7 @@ function NodesPanel({
     capacity: string;
   }) => void;
   onCreate: (event: FormEvent) => void;
+  onCheck: (id: string) => void;
   onDisable: (id: string) => void;
 }) {
   return (
@@ -906,6 +927,7 @@ function NodesPanel({
                 <th>Status</th>
                 <th>Load</th>
                 <th>Inbound</th>
+                <th>Last error</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -920,9 +942,21 @@ function NodesPanel({
                   </td>
                   <td>{node.inboundId ?? 'none'}</td>
                   <td>
-                    <button onClick={() => onDisable(node.id)} type="button">
-                      Disable
-                    </button>
+                    {node.lastError ? (
+                      <span className="error-text">{node.lastError}</span>
+                    ) : (
+                      <span className="muted">none</span>
+                    )}
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button onClick={() => onCheck(node.id)} type="button">
+                        Check
+                      </button>
+                      <button onClick={() => onDisable(node.id)} type="button">
+                        Disable
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

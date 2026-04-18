@@ -5,11 +5,24 @@ import {
   VpnClient,
   VpnClientResult,
   VpnNodeConfig,
+  VpnNodeCheckResult,
 } from './vpn-client.interface';
 
 @Injectable()
 export class NoopVpnClient implements VpnClient {
   private readonly logger = new Logger(NoopVpnClient.name);
+
+  async checkNode(node: VpnNodeConfig): Promise<VpnNodeCheckResult> {
+    this.logger.log(`Mock VPN node checked: ${node.id}`);
+
+    return {
+      ok: true,
+      provider: 'noop',
+      inboundId: node.inboundId,
+      inboundFound: node.inboundId !== undefined && node.inboundId !== null,
+      message: 'Noop VPN provider is configured; no remote panel was checked.',
+    };
+  }
 
   async createClient(
     node: VpnNodeConfig,
@@ -36,4 +49,3 @@ export class NoopVpnClient implements VpnClient {
     this.logger.log('Mock VPN client deleted');
   }
 }
-

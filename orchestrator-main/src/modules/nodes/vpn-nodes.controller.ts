@@ -123,6 +123,27 @@ export class VpnNodesController {
     };
   }
 
+  @Post(':id/check')
+  async check(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: AdminRequest,
+  ) {
+    const result = await this.vpnNodesService.checkNode(id);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'vpn_node',
+      entityId: id,
+      action: 'check',
+      after: result,
+    });
+
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
   private serializeNode(node: VpnNodeEntity) {
     return {
       ...node,

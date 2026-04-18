@@ -1,10 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   VpnNodeEntity,
   VpnNodeStatus,
 } from '../../database/entities/vpn-node.entity';
+import {
+  VpnClient,
+  VpnNodeCheckResult,
+} from '../../integrations/vpn/vpn-client.interface';
+import { VPN_CLIENT } from '../../integrations/vpn/vpn.module';
 
 export interface CreateVpnNodeInput {
   name?: string;
@@ -32,6 +37,8 @@ export class VpnNodesService {
   constructor(
     @InjectRepository(VpnNodeEntity)
     private readonly repository: Repository<VpnNodeEntity>,
+    @Inject(VPN_CLIENT)
+    private readonly vpnClient: VpnClient,
   ) {}
 
   async list(): Promise<VpnNodeEntity[]> {
@@ -110,6 +117,29 @@ export class VpnNodesService {
       isActive: false,
       status: 'draining',
     });
+  }
+
+  async checkNode(nodeId: string): Promise<VpnNodeCheckResult> {
+    const node = await this.findById(nodeId);
+
+    try {
+      const result = await this.vpnClient.checkNode({
+        id: node.id,
+        host: node.host,
+        apiKey: node.apiKey,
+        apiVersion: node.apiVersion ?? undefined,
+        inboundId: node.inboundId ?? undefined,
+      });
+
+      node.lastError = null;
+      await this.repository.save(node);
+
+      return result;
+    } catch (error) {
+      node.lastError = error instanceof Error ? error.message : String(error);
+      await this.repository.save(node);
+      throw error;
+    }
   }
 
   async selectLeastLoaded(): Promise<VpnNodeEntity> {

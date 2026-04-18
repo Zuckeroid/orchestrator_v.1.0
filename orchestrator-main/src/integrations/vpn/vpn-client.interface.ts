@@ -18,7 +18,17 @@ export interface VpnClientResult {
   subscriptionLink: string;
 }
 
+export interface VpnNodeCheckResult {
+  ok: boolean;
+  provider: string;
+  inboundId?: number | null;
+  inboundFound?: boolean;
+  clientCount?: number;
+  message: string;
+}
+
 export interface VpnClient {
+  checkNode(node: VpnNodeConfig): Promise<VpnNodeCheckResult>;
   createClient(
     node: VpnNodeConfig,
     input: CreateVpnClientInput,
@@ -30,4 +40,3 @@ export interface VpnClient {
   ): Promise<void>;
   deleteClient(node: VpnNodeConfig, login: string): Promise<void>;
 }
-

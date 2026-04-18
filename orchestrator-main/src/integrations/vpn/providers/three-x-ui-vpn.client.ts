@@ -7,6 +7,7 @@ import {
   VpnClient,
   VpnClientResult,
   VpnNodeConfig,
+  VpnNodeCheckResult,
 } from '../vpn-client.interface';
 
 interface ThreeXuiCredentials {
@@ -27,6 +28,11 @@ interface ThreeXuiClientSettings {
   totalGB: number;
 }
 
+interface ThreeXuiInbound {
+  id: number;
+  settings?: string;
+}
+
 @Injectable()
 export class ThreeXuiVpnClient implements VpnClient {
   private readonly logger = new Logger(ThreeXuiVpnClient.name);
@@ -34,6 +40,22 @@ export class ThreeXuiVpnClient implements VpnClient {
   private readonly insecureHttpsAgent = new HttpsAgent({
     rejectUnauthorized: false,
   });
+
+  async checkNode(node: VpnNodeConfig): Promise<VpnNodeCheckResult> {
+    this.ensureInboundId(node);
+
+    const inbound = await this.getInbound(node);
+    const clientCount = this.countInboundClients(inbound);
+
+    return {
+      ok: true,
+      provider: '3x-ui',
+      inboundId: node.inboundId,
+      inboundFound: true,
+      clientCount,
+      message: `3x-ui node is reachable; inbound ${node.inboundId} found`,
+    };
+  }
 
   async createClient(
     node: VpnNodeConfig,
@@ -149,6 +171,88 @@ export class ThreeXuiVpnClient implements VpnClient {
     }
 
     this.assertSuccess(response, path);
+  }
+
+  private async getWithSession<T>(
+    node: VpnNodeConfig,
+    path: string,
+    retry = true,
+  ): Promise<T> {
+    const cookie = await this.getSessionCookie(node);
+    const response = await axios.get(this.url(node, path), {
+      headers: {
+        Cookie: cookie,
+      },
+      httpsAgent: this.httpsAgent(),
+      timeout: this.timeout(),
+      validateStatus: () => true,
+    });
+
+    if (
+      retry &&
+      (response.status === 401 || response.status === 403 || response.status === 404)
+    ) {
+      this.sessions.delete(node.id);
+      return this.getWithSession<T>(node, path, false);
+    }
+
+    this.assertSuccess(response, path);
+
+    return response.data as T;
+  }
+
+  private async getInbound(node: VpnNodeConfig): Promise<ThreeXuiInbound> {
+    const response = await this.getWithSession<unknown>(
+      node,
+      this.inboundsPath(`/get/${node.inboundId}`),
+    );
+    const inbound = this.unwrapInboundResponse(response);
+    if (!inbound) {
+      throw new Error(`3x-ui inbound ${node.inboundId} was not found`);
+    }
+
+    return inbound;
+  }
+
+  private unwrapInboundResponse(response: unknown): ThreeXuiInbound | undefined {
+    if (!this.isRecord(response)) {
+      return undefined;
+    }
+
+    const envelope = response as Record<string, unknown>;
+
+    if (this.isInbound(envelope)) {
+      return envelope;
+    }
+
+    const obj = envelope.obj;
+    if (this.isInbound(obj)) {
+      return obj;
+    }
+
+    const data = envelope.data;
+    if (this.isInbound(data)) {
+      return data;
+    }
+
+    return undefined;
+  }
+
+  private countInboundClients(inbound: ThreeXuiInbound): number {
+    if (!inbound.settings) {
+      return 0;
+    }
+
+    try {
+      const parsed = JSON.parse(inbound.settings) as { clients?: unknown[] };
+      return Array.isArray(parsed.clients) ? parsed.clients.length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private isInbound(value: unknown): value is ThreeXuiInbound {
+    return this.isRecord(value) && typeof value.id === 'number';
   }
 
   private async getSessionCookie(node: VpnNodeConfig): Promise<string> {

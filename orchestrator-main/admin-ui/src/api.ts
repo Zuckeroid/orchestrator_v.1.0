@@ -166,11 +166,21 @@ export interface VpnNode {
   apiVersion?: string | null;
   inboundId?: number | null;
   status: string;
+  lastError?: string | null;
   capacity: number;
   currentLoad: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface VpnNodeCheckResult {
+  ok: boolean;
+  provider: string;
+  inboundId?: number | null;
+  inboundFound?: boolean;
+  clientCount?: number;
+  message: string;
 }
 
 export interface StorageBackend {
