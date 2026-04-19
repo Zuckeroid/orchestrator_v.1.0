@@ -1,0 +1,615 @@
+Orchestrator v2.0
+=================
+
+Status: draft / roadmap
+Base version: Orchestrator v1.0
+
+Purpose
+-------
+
+Orchestrator v2.0 turns the system from a provisioning admin panel into a
+single subscription control plane.
+
+In v1.0 a user receives a direct subscription URL from a concrete 3x-ui node.
+If that node becomes unavailable, blocked, or replaced, the user subscription
+URL also becomes unreliable.
+
+In v2.0 the user must receive one permanent Orchestrator subscription URL.
+The Orchestrator decides dynamically which real node should serve the user and
+can move the user to another node without asking the user to change anything in
+the client application.
+
+
+Core Goal
+---------
+
+The user has only one subscription URL:
+
+    https://sub.my-storage.org/s/{publicSubscriptionToken}
+
+The URL is stable for the whole subscription lifetime.
+
+The user must not need to know:
+
+- which 3x-ui node is used;
+- whether the node was replaced;
+- whether failover happened;
+- how many backend nodes exist.
+
+
+Architecture
+------------
+
+v2.0 introduces a new runtime component:
+
+    Orchestrator Subscription Gateway
+
+The gateway is responsible for serving subscription content to user
+applications.
+
+High-level flow:
+
+1. User pays in billing.
+2. Billing sends webhook to Orchestrator.
+3. Orchestrator creates or renews Provision.
+4. Orchestrator creates a client on a selected active 3x-ui node.
+5. Billing sends the user only the Orchestrator subscription URL.
+6. User application periodically requests this Orchestrator URL.
+7. Orchestrator validates the provision and returns current subscription
+   content.
+8. If the current node is unavailable, Orchestrator can move the user to a
+   healthy node and return updated subscription content.
+
+
+Subscription Gateway Modes
+--------------------------
+
+Mode A: Redirect Gateway
+
+Orchestrator responds with HTTP redirect to the current 3x-ui subscription URL.
+
+Pros:
+- simple;
+- low load on Orchestrator;
+- fast to implement.
+
+Cons:
+- user application can see the real node URL;
+- less control over subscription content;
+- weaker failover behavior;
+- client may cache redirected node URLs.
+
+Mode B: Proxy / Generator Gateway
+
+Orchestrator responds directly with subscription content:
+
+    GET /s/{publicSubscriptionToken}
+    200 text/plain
+
+Orchestrator can either:
+
+- fetch subscription content from the selected 3x-ui node and proxy it;
+- generate subscription content itself from stored node/client metadata.
+
+Pros:
+- user sees only Orchestrator URL;
+- real node subscription endpoints can be hidden;
+- Orchestrator can dynamically switch nodes;
+- Orchestrator can return fallback configs;
+- request logging and abuse protection are possible;
+- best user experience.
+
+Cons:
+- Orchestrator becomes a runtime dependency for subscription updates;
+- requires good uptime and HTTPS;
+- requires careful caching and security.
+
+Decision for v2.0:
+
+    Use Proxy / Generator Gateway as the target architecture.
+
+
+Public Subscription Token
+-------------------------
+
+The public token must be different from:
+
+- internal provision ID;
+- billing subscription ID;
+- 3x-ui client UUID;
+- user email.
+
+Example:
+
+    publicSubscriptionToken = random 128-bit or 256-bit URL-safe token
+
+The token is used only for subscription retrieval. It must not grant admin API
+access.
+
+Token rotation must be possible:
+
+- manual rotation by admin;
+- automatic rotation after suspected leak;
+- old token can optionally stay valid for a short grace period.
+
+
+Node Health Model
+-----------------
+
+Each VPN node must have a role and a health status.
+
+Node role:
+
+- active
+- standby
+- maintenance
+- blocked
+- retired
+
+Node health status:
+
+- unknown
+- online
+- degraded
+- offline
+
+Role meaning:
+
+active:
+    Node participates in normal user distribution.
+
+standby:
+    Node is ready and monitored, but does not receive new users during normal
+    operation. It is used for failover or manual activation.
+
+maintenance:
+    Node is temporarily excluded from new provisioning. Existing users can
+    remain until migrated or expired.
+
+blocked:
+    Node is considered blocked or unusable. It must not receive new users.
+
+retired:
+    Node is kept for history only and must not be used.
+
+Health meaning:
+
+unknown:
+    Health-check was never completed or status is stale.
+
+online:
+    API is reachable and basic checks pass.
+
+degraded:
+    API may be reachable, but one or more checks fail or node behaves
+    inconsistently.
+
+offline:
+    API is unreachable or repeated checks failed.
+
+
+Health Checks
+-------------
+
+The Orchestrator must regularly check every non-retired node.
+
+Minimum checks:
+
+- 3x-ui panel/API login works;
+- configured inbound exists;
+- node can return inbound/client list;
+- node has enough free capacity;
+- optional: subscription endpoint returns expected format.
+
+Recommended hysteresis:
+
+- mark node offline only after 3 failed checks in a row;
+- mark node online only after 2 successful checks in a row;
+- keep last error and last successful check time.
+
+Health-check fields:
+
+- healthStatus;
+- lastHealthCheckAt;
+- lastSuccessfulHealthCheckAt;
+- failureCount;
+- lastError;
+- latencyMs.
+
+
+Warm Standby Nodes
+------------------
+
+v2.0 must support a reserve pool of warm standby nodes.
+
+Warm standby node requirements:
+
+- VPS is online;
+- 3x-ui is installed;
+- inbound is configured;
+- API credentials are stored in Orchestrator;
+- health-check passes;
+- node role is standby;
+- node current load is 0 or low;
+- node is ready to accept users within minutes.
+
+Standby nodes do not participate in normal balancing.
+
+They are used when:
+
+- active node is blocked;
+- active node becomes offline;
+- active node is manually drained;
+- emergency capacity is needed.
+
+Admin UI must show:
+
+- node role;
+- health status;
+- last check time;
+- current load;
+- standby readiness;
+- actions: Activate, Put to standby, Drain, Mark blocked, Retire.
+
+
+Drain Mode
+----------
+
+Drain mode is used for planned maintenance.
+
+When a node is drained:
+
+- it must not receive new users;
+- existing users remain active;
+- renewals may migrate users to other nodes;
+- admin can manually migrate affected provisions;
+- once load becomes 0, node can be moved to maintenance or retired.
+
+
+Migration Model
+---------------
+
+v2.0 must support moving a provision from one node to another.
+
+Migration reasons:
+
+- node_offline
+- node_blocked
+- node_maintenance
+- manual_admin_action
+- load_rebalance
+- emergency_failover
+
+Migration steps:
+
+1. Lock provision for migration.
+2. Select target node.
+3. Create client on target node with the same service limits.
+4. Preserve expiration time.
+5. Preserve max device/IP limiter policy if supported.
+6. Update provision current node and client metadata.
+7. Return updated subscription content through gateway.
+8. Disable old client on old node if possible.
+9. If old node is unavailable, schedule delayed cleanup.
+10. Record migration audit log.
+
+Migration must be idempotent.
+
+Migration must have cooldown:
+
+    Do not auto-migrate the same provision more often than once per configured
+    interval unless admin explicitly forces it.
+
+Suggested default:
+
+    migrationCooldownMinutes = 60
+
+
+Provision Data Additions
+------------------------
+
+Suggested new fields:
+
+- publicSubscriptionToken;
+- currentVpnNodeId;
+- currentVpnClientId;
+- currentVpnClientEmail;
+- lastSubscriptionFetchAt;
+- subscriptionFetchCount;
+- lastMigrationAt;
+- migrationCount;
+- migrationReason;
+- migrationLockedAt;
+- migrationLockExpiresAt;
+
+Existing fields from v1.0 remain:
+
+- email;
+- externalUserId;
+- externalSubscriptionId;
+- externalOrderId;
+- planId;
+- status;
+- serviceExpiresAt;
+- deleteAfter;
+- subscriptionLink.
+
+In v2.0 subscriptionLink should point to the Orchestrator gateway URL, not a
+direct 3x-ui node URL.
+
+
+Migration History Table
+-----------------------
+
+Add table:
+
+    provision_migrations
+
+Fields:
+
+- id;
+- provisionId;
+- fromNodeId;
+- toNodeId;
+- reason;
+- status;
+- error;
+- startedAt;
+- completedAt;
+- createdBy;
+
+Statuses:
+
+- pending
+- running
+- completed
+- failed
+- skipped
+
+
+Subscription Response
+---------------------
+
+The gateway should return content compatible with common client applications.
+
+Requirements:
+
+- content-type: text/plain;
+- no-cache or short-cache headers unless explicitly configured;
+- valid subscription body;
+- inactive provision returns clear HTTP status;
+- expired provision returns clear HTTP status;
+- unknown token must not leak whether user exists.
+
+Recommended HTTP statuses:
+
+- 200 for valid active subscription;
+- 403 for inactive/cancelled/suspended provision;
+- 404 for unknown token;
+- 410 for deleted provision;
+- 429 for rate-limited requests.
+
+
+Subscription Refresh Interval
+-----------------------------
+
+The system should recommend a subscription refresh interval suitable for
+failover.
+
+Target:
+
+    6-12 hours for normal users.
+
+If supported by client format, include update interval metadata.
+
+If not supported, include the recommended interval in user instructions.
+
+
+Balancing Policy
+----------------
+
+v1.0 uses simple balancing by current load.
+
+v2.0 should support policies:
+
+- least_loaded;
+- weighted_round_robin;
+- region_preferred;
+- active_only;
+- standby_on_failover_only.
+
+Standby nodes must be excluded from normal balancing unless explicitly
+activated.
+
+
+IP Limiter / Device Limits
+--------------------------
+
+v2.0 should support device/IP limits per plan.
+
+Plan mapping additions:
+
+- maxDevices;
+- ipLimit;
+- ipLimitEnabled;
+- ipLimitResetPeriod;
+
+If 3x-ui supports required IP limiter fields, Orchestrator must set them during
+client creation and migration.
+
+If provider does not support them, Orchestrator must record a warning in audit
+logs.
+
+
+Admin UI v2.0
+-------------
+
+Required UI additions:
+
+VPN Nodes:
+
+- Role column;
+- Health column;
+- Last checked column;
+- Last error;
+- Activate standby;
+- Put to standby;
+- Drain node;
+- Mark blocked;
+- Retire node;
+- Check now.
+
+Provisions:
+
+- Current node;
+- Gateway subscription URL;
+- Last subscription fetch;
+- Migration count;
+- Migrate now;
+- Rotate subscription token;
+- View migration history.
+
+Dashboard:
+
+- active provisions;
+- active nodes;
+- standby nodes;
+- offline nodes;
+- failed jobs;
+- recent migrations;
+- health-check status.
+
+
+Security Requirements
+---------------------
+
+Gateway URL must be public, but token-based.
+
+Security requirements:
+
+- public token must be random and unguessable;
+- no email or billing ID in public URL;
+- rate limiting per token and per IP;
+- audit log for abnormal access;
+- option to rotate token;
+- no admin credentials exposed to client;
+- node API credentials remain encrypted at rest;
+- direct 3x-ui subscription URLs should not be shown to users in v2.0.
+
+
+Operational Requirements
+------------------------
+
+The Orchestrator becomes runtime-critical for subscription updates.
+
+Production requirements:
+
+- HTTPS for gateway domain;
+- uptime monitoring;
+- PostgreSQL backups;
+- Redis persistence or acceptable job recovery strategy;
+- clear incident runbook;
+- clear node recovery runbook;
+- logs for gateway requests and migrations.
+
+
+Implementation Phases
+---------------------
+
+Phase 1: Health Checks
+
+- Add node role and health status.
+- Add scheduled health-check job.
+- Add Check now action.
+- Show health in Admin UI.
+
+Phase 2: Manual Migration
+
+- Add migration service.
+- Add provision migration history.
+- Add Migrate now button.
+- Preserve expiry and plan limits.
+
+Phase 3: Gateway URL
+
+- Add publicSubscriptionToken.
+- Add public gateway endpoint.
+- Return subscription content through Orchestrator.
+- Keep old direct 3x-ui links for compatibility during transition.
+
+Phase 4: Warm Standby
+
+- Add standby role.
+- Exclude standby from normal balancing.
+- Add Activate standby action.
+- Add Drain node action.
+
+Phase 5: Automatic Failover
+
+- Detect offline/blocked current node.
+- Select standby or active target node.
+- Auto-migrate provision on subscription fetch or scheduled job.
+- Add cooldown and audit logs.
+
+Phase 6: Advanced Policies
+
+- Weighted balancing.
+- Region preference.
+- IP limiter by plan.
+- Token rotation policy.
+- Multi-node subscription output if needed.
+
+
+What Remains v1.0
+-----------------
+
+v1.0 continues to use direct 3x-ui subscription URLs.
+
+v1.0 scope:
+
+- working billing webhook;
+- idempotent provisioning;
+- node management;
+- plan mapping;
+- 3x-ui client creation/renewal/suspend/delete;
+- basic Admin UI;
+- manual operational control.
+
+v2.0 must not block v1.0 release.
+
+
+Open Questions
+--------------
+
+1. Should gateway proxy raw 3x-ui subscription content or generate content
+   itself?
+
+2. Which client applications will be officially supported?
+
+3. Which subscription formats and refresh interval hints do they support?
+
+4. Should one user receive one active node or multiple fallback nodes inside
+   one subscription?
+
+5. How aggressive should automatic migration be?
+
+6. Should standby nodes be always paid VPS instances or created on demand from
+   provider API?
+
+7. Should direct 3x-ui panel access be hidden behind private network/VPN in
+   production?
+
+
+Decision Summary
+----------------
+
+For v2.0 the target architecture is:
+
+- Orchestrator-owned permanent subscription URL;
+- Proxy / Generator Subscription Gateway;
+- monitored active nodes;
+- warm standby node pool;
+- manual migration first;
+- automatic failover after health-check and migration are reliable;
+- no direct user dependency on a concrete 3x-ui node URL.
+
