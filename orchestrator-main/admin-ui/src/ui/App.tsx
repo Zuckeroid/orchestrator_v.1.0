@@ -640,6 +640,9 @@ function Dashboard({
     (item) => item.status === 'active',
   ).length;
   const failedEvents = view.events.filter((item) => item.status === 'failed').length;
+  const nodeHealth = groupCounts(
+    view.nodes.map((item) => item.healthStatus || 'unknown'),
+  );
 
   return (
     <>
@@ -647,6 +650,14 @@ function Dashboard({
         <Metric title="API" value={health?.status ?? 'unknown'} tone="green" />
         <Metric title="Database" value={health?.db ?? 'unknown'} tone="teal" />
         <Metric title="Redis" value={health?.redis ?? 'unknown'} tone="yellow" />
+        <Metric title="Nodes online" value={nodeHealth.online ?? 0} tone="green" />
+        <Metric
+          title="Nodes degraded"
+          value={nodeHealth.degraded ?? 0}
+          tone="yellow"
+        />
+        <Metric title="Nodes offline" value={nodeHealth.offline ?? 0} tone="red" />
+        <Metric title="Nodes unknown" value={nodeHealth.unknown ?? 0} tone="teal" />
         <Metric title="Active provisions" value={activeProvisions} tone="green" />
         <Metric title="Failed events" value={failedEvents} tone="red" />
         <Metric title="Queue delayed" value={queue?.counts.delayed ?? 0} tone="yellow" />
@@ -1048,7 +1059,7 @@ function NodesPanel({
                         Edit
                       </button>
                       <button onClick={() => onCheck(node.id)} type="button">
-                        Check
+                        Check now
                       </button>
                       {node.isActive ? (
                         <button onClick={() => onDisable(node.id)} type="button">
