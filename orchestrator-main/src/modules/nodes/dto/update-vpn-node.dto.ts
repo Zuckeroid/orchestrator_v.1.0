@@ -23,6 +23,14 @@ export class UpdateVpnNodeDto {
 
   @IsOptional()
   @IsString()
+  country?: string | null;
+
+  @IsOptional()
+  @IsString()
+  vdsProvider?: string | null;
+
+  @IsOptional()
+  @IsString()
   host?: string;
 
   @IsOptional()

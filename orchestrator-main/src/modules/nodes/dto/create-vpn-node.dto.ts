@@ -12,6 +12,14 @@ export class CreateVpnNodeDto {
   @IsString()
   name?: string;
 
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @IsOptional()
+  @IsString()
+  vdsProvider?: string;
+
   @IsString()
   @IsNotEmpty()
   host!: string;

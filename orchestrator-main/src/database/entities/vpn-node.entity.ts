@@ -18,6 +18,12 @@ export class VpnNodeEntity {
   @Column({ type: 'text', nullable: true })
   name?: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  country?: string | null;
+
+  @Column({ name: 'vds_provider', type: 'text', nullable: true })
+  vdsProvider?: string | null;
+
   @Column({ type: 'text' })
   host!: string;
 

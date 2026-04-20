@@ -60,6 +60,8 @@ interface StorageBackendFormState {
 
 interface VpnNodeFormState {
   name: string;
+  country: string;
+  vdsProvider: string;
   host: string;
   username: string;
   password: string;
@@ -111,6 +113,8 @@ const emptyStorageBackendForm: StorageBackendFormState = {
 
 const emptyNodeForm: VpnNodeFormState = {
   name: '',
+  country: '',
+  vdsProvider: '',
   host: '',
   username: '',
   password: '',
@@ -322,6 +326,8 @@ export function App() {
 
     const payload = {
       name: nodeForm.name,
+      country: optionalString(nodeForm.country) ?? null,
+      vdsProvider: optionalString(nodeForm.vdsProvider) ?? null,
       host: nodeForm.host,
       apiVersion: '3x-ui',
       inboundId: Number(nodeForm.inboundId),
@@ -354,6 +360,8 @@ export function App() {
     setEditingNodeId(node.id);
     setNodeForm({
       name: node.name ?? '',
+      country: node.country ?? '',
+      vdsProvider: node.vdsProvider ?? '',
       host: node.host,
       username: '',
       password: '',
@@ -372,6 +380,22 @@ export function App() {
 
   async function disableNode(id: string) {
     await runAction('VPN node disabled', () => api.delete(`/nodes/vpn/${id}`));
+  }
+
+  async function deleteNode(id: string) {
+    const confirmed = window.confirm(
+      'Delete this VPN node permanently? This only works when no provisions are linked to the node.',
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await runAction('VPN node deleted', async () => {
+      await api.delete(`/nodes/vpn/${id}/purge`);
+      if (editingNodeId === id) {
+        resetNodeForm();
+      }
+    });
   }
 
   async function enableNode(id: string) {
@@ -526,6 +550,7 @@ export function App() {
             onCheck={checkNode}
             onDisable={disableNode}
             onEnable={enableNode}
+            onDelete={deleteNode}
           />
         ) : null}
         {activeTab === 'storage' ? (
@@ -841,6 +866,7 @@ function NodesPanel({
   onCheck,
   onDisable,
   onEnable,
+  onDelete,
 }: {
   nodes: VpnNode[];
   form: VpnNodeFormState;
@@ -852,6 +878,7 @@ function NodesPanel({
   onCheck: (id: string) => void;
   onDisable: (id: string) => void;
   onEnable: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const isEditing = editingNodeId !== null;
 
@@ -865,6 +892,26 @@ function NodesPanel({
             required
             value={form.name}
             onChange={(event) => setForm({ ...form, name: event.target.value })}
+          />
+        </label>
+        <label>
+          Country
+          <input
+            placeholder="Netherlands / NL"
+            value={form.country}
+            onChange={(event) =>
+              setForm({ ...form, country: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          VDS provider
+          <input
+            placeholder="Aeza / Timeweb / Selectel"
+            value={form.vdsProvider}
+            onChange={(event) =>
+              setForm({ ...form, vdsProvider: event.target.value })
+            }
           />
         </label>
         <label>
@@ -937,9 +984,14 @@ function NodesPanel({
             {isEditing ? 'Save node' : 'Add node'}
           </button>
           {isEditing ? (
-            <button type="button" onClick={onCancel}>
-              Cancel
-            </button>
+            <>
+              <button className="danger" type="button" onClick={() => onDelete(editingNodeId!)}>
+                Delete node
+              </button>
+              <button type="button" onClick={onCancel}>
+                Cancel
+              </button>
+            </>
           ) : null}
         </div>
       </form>
@@ -950,6 +1002,8 @@ function NodesPanel({
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Country</th>
+                <th>VDS Provider</th>
                 <th>Host</th>
                 <th>Role</th>
                 <th>Health</th>
@@ -964,6 +1018,8 @@ function NodesPanel({
               {nodes.map((node) => (
                 <tr key={node.id}>
                   <td>{node.name ?? 'unnamed'}</td>
+                  <td>{renderCountry(node.country)}</td>
+                  <td>{node.vdsProvider ?? 'none'}</td>
                   <td>
                     <a href={node.host} target="_blank" rel="noreferrer">
                       {node.host}
@@ -1704,7 +1760,7 @@ function EventsPanel({
         <div className="events-sidebar">
           <DataTable
             title="Queue"
-            className="queue-panel"
+            className="queue-panel compact-table"
             headers={['State', 'Count']}
             rows={
               queue
@@ -1763,7 +1819,7 @@ function EventsPanel({
             ) : null}
           </section>
         </div>
-        <section className="panel table-panel">
+        <section className="panel table-panel events-table-panel">
           <div className="panel-heading">
             <h2>Processed Events</h2>
             <label className="inline-filter">
@@ -1885,6 +1941,24 @@ function DataTable({
   );
 }
 
+function renderCountry(country?: string | null) {
+  if (!country) {
+    return 'none';
+  }
+
+  const flag = countryFlag(country);
+  if (!flag) {
+    return country;
+  }
+
+  return (
+    <span className="country-pill">
+      <span aria-hidden="true">{flag}</span>
+      <span>{country}</span>
+    </span>
+  );
+}
+
 function PaginationControls({
   page,
   totalPages,
@@ -1930,6 +2004,61 @@ function groupCounts(values: string[]) {
     acc[value] = (acc[value] ?? 0) + 1;
     return acc;
   }, {});
+}
+
+function countryFlag(country?: string | null): string {
+  const code = resolveCountryCode(country);
+  if (!code) {
+    return '';
+  }
+
+  return code
+    .toUpperCase()
+    .split('')
+    .map((char) => String.fromCodePoint(char.charCodeAt(0) + 127397))
+    .join('');
+}
+
+function resolveCountryCode(country?: string | null): string | null {
+  if (!country) {
+    return null;
+  }
+
+  const normalized = country.trim().toLowerCase();
+  if (/^[a-z]{2}$/.test(normalized)) {
+    return normalized;
+  }
+
+  const aliases: Record<string, string> = {
+    netherlands: 'nl',
+    holland: 'nl',
+    germany: 'de',
+    deutschland: 'de',
+    finland: 'fi',
+    france: 'fr',
+    poland: 'pl',
+    czechia: 'cz',
+    czech: 'cz',
+    lithuania: 'lt',
+    latvia: 'lv',
+    estonia: 'ee',
+    romania: 'ro',
+    bulgaria: 'bg',
+    turkey: 'tr',
+    russia: 'ru',
+    kazakhstan: 'kz',
+    singapore: 'sg',
+    usa: 'us',
+    us: 'us',
+    united states: 'us',
+    canada: 'ca',
+    uk: 'gb',
+    united kingdom: 'gb',
+    britain: 'gb',
+    england: 'gb',
+  };
+
+  return aliases[normalized] ?? null;
 }
 
 function uniqueValues(values: string[]) {

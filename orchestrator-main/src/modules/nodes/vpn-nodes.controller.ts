@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -112,6 +113,35 @@ export class VpnNodesController {
     return {
       success: true,
       data: this.serializeNode(node),
+    };
+  }
+
+  @Delete(':id/purge')
+  async remove(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: AdminRequest,
+  ) {
+    const before = await this.vpnNodesService.findById(id);
+    const affected = await this.provisionsService.findAffectedByVpnNode(id);
+    if (affected.length > 0) {
+      throw new ConflictException(
+        `Cannot delete VPN node while ${affected.length} provision(s) are still linked to it`,
+      );
+    }
+
+    await this.vpnNodesService.remove(id);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'vpn_node',
+      entityId: id,
+      action: 'delete',
+      before,
+    });
+
+    return {
+      success: true,
+      data: { id },
     };
   }
 

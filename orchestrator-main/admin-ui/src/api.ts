@@ -156,6 +156,8 @@ export interface Plan {
 export interface VpnNode {
   id: string;
   name?: string | null;
+  country?: string | null;
+  vdsProvider?: string | null;
   host: string;
   apiKey: string;
   apiVersion?: string | null;

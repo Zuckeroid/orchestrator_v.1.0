@@ -14,6 +14,8 @@ import { VPN_CLIENT } from '../../integrations/vpn/vpn.module';
 
 export interface CreateVpnNodeInput {
   name?: string;
+  country?: string;
+  vdsProvider?: string;
   host: string;
   apiKey: string;
   apiVersion?: string;
@@ -24,6 +26,8 @@ export interface CreateVpnNodeInput {
 
 export interface UpdateVpnNodeInput {
   name?: string | null;
+  country?: string | null;
+  vdsProvider?: string | null;
   host?: string;
   apiKey?: string;
   apiVersion?: string | null;
@@ -68,6 +72,8 @@ export class VpnNodesService {
   async create(input: CreateVpnNodeInput): Promise<VpnNodeEntity> {
     const node = this.repository.create({
       name: input.name,
+      country: input.country,
+      vdsProvider: input.vdsProvider,
       host: input.host,
       apiKey: input.apiKey,
       apiVersion: input.apiVersion,
@@ -91,6 +97,12 @@ export class VpnNodesService {
 
     if (input.name !== undefined) {
       node.name = input.name;
+    }
+    if (input.country !== undefined) {
+      node.country = input.country;
+    }
+    if (input.vdsProvider !== undefined) {
+      node.vdsProvider = input.vdsProvider;
     }
     if (input.host !== undefined) {
       node.host = input.host;
@@ -140,6 +152,11 @@ export class VpnNodesService {
       isActive: false,
       status: 'draining',
     });
+  }
+
+  async remove(nodeId: string): Promise<void> {
+    const node = await this.findById(nodeId);
+    await this.repository.remove(node);
   }
 
   async checkNode(nodeId: string): Promise<VpnNodeCheckResult> {
