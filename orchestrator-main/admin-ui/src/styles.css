@@ -430,7 +430,7 @@ input[type="checkbox"] {
 
 .nodes-table th:nth-child(8),
 .nodes-table td:nth-child(8) {
-  width: 9%;
+  width: 10%;
 }
 
 .nodes-table th:nth-child(9),
@@ -460,7 +460,7 @@ input[type="checkbox"] {
 
 .nodes-table th:nth-child(7),
 .nodes-table td:nth-child(7) {
-  width: 6%;
+  width: 5%;
 }
 
 .nodes-table th:nth-child(4),
