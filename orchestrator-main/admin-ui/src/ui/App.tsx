@@ -1946,14 +1946,20 @@ function renderCountry(country?: string | null) {
     return 'none';
   }
 
-  const flag = countryFlag(country);
-  if (!flag) {
+  const code = resolveCountryCode(country);
+  if (!code) {
     return country;
   }
 
   return (
     <span className="country-pill">
-      <span aria-hidden="true">{flag}</span>
+      <img
+        className="country-flag"
+        src={`https://flagcdn.com/16x12/${code}.png`}
+        srcSet={`https://flagcdn.com/32x24/${code}.png 2x`}
+        alt=""
+        loading="lazy"
+      />
       <span>{country}</span>
     </span>
   );
@@ -2004,19 +2010,6 @@ function groupCounts(values: string[]) {
     acc[value] = (acc[value] ?? 0) + 1;
     return acc;
   }, {});
-}
-
-function countryFlag(country?: string | null): string {
-  const code = resolveCountryCode(country);
-  if (!code) {
-    return '';
-  }
-
-  return code
-    .toUpperCase()
-    .split('')
-    .map((char) => String.fromCodePoint(char.charCodeAt(0) + 127397))
-    .join('');
 }
 
 function resolveCountryCode(country?: string | null): string | null {

@@ -306,7 +306,7 @@ input[type="checkbox"] {
 
 .events-layout {
   display: grid;
-  grid-template-columns: minmax(360px, 430px) minmax(0, 1fr);
+  grid-template-columns: minmax(430px, 520px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -543,6 +543,16 @@ td {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.country-flag {
+  width: 16px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 2px;
+  background: #f8fafc;
+  object-fit: cover;
 }
 
 .table-footer {
