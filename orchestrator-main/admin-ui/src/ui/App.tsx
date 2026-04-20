@@ -1395,14 +1395,6 @@ function ProvisionsPanel({
             <div className="detail-grid">
               <div className="detail-block">
                 <h3>Meta</h3>
-                <div className="detail-link-block">
-                  <strong>VPN node</strong>
-                  <div>{selectedProvision.vpnNodeId ?? 'none'}</div>
-                </div>
-                <div className="detail-link-block">
-                  <strong>VPN login</strong>
-                  <div>{selectedProvision.vpnLogin ?? 'none'}</div>
-                </div>
                 <dl className="detail-list">
                   <dt>User</dt>
                   <dd>{selectedProvision.email}</dd>
@@ -1410,6 +1402,10 @@ function ProvisionsPanel({
                   <dd>{selectedProvision.externalUserId}</dd>
                   <dt>Subscription</dt>
                   <dd>{selectedProvision.externalSubscriptionId}</dd>
+                  <dt>VPN node</dt>
+                  <dd>{selectedProvision.vpnNodeId ?? 'none'}</dd>
+                  <dt>VPN login</dt>
+                  <dd>{selectedProvision.vpnLogin ?? 'none'}</dd>
                   <dt>Storage</dt>
                   <dd>{selectedProvision.storageStatus}</dd>
                   <dt>Days left</dt>
@@ -1424,9 +1420,9 @@ function ProvisionsPanel({
               </div>
               <div className="detail-block">
                 <h3>Links & State</h3>
-                <div className="detail-link-block">
-                  <strong>Subscription URL</strong>
-                  <div>
+                <dl className="detail-list">
+                  <dt>Subscription URL</dt>
+                  <dd>
                     {selectedProvision.subscriptionLink ? (
                       <a
                         href={selectedProvision.subscriptionLink}
@@ -1438,9 +1434,7 @@ function ProvisionsPanel({
                     ) : (
                       'none'
                     )}
-                  </div>
-                </div>
-                <dl className="detail-list">
+                  </dd>
                   <dt>Error</dt>
                   <dd>{selectedProvision.error ?? 'none'}</dd>
                   <dt>Deleted at</dt>

@@ -712,7 +712,7 @@ td {
 
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -745,6 +745,11 @@ td {
 
 .detail-list dd {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-list dd a {
+  display: inline-block;
   overflow-wrap: anywhere;
 }
 
