@@ -107,13 +107,15 @@ export class PlansService {
 
   async delete(id: string): Promise<void> {
     const plan = await this.getById(id);
-    const provisionsCount = await this.provisionsRepository.countBy({
-      planId: plan.id,
-    });
+    const blockingProvisionsCount = await this.provisionsRepository
+      .createQueryBuilder('provision')
+      .where('provision.plan_id = :planId', { planId: plan.id })
+      .andWhere('provision.status != :deletedStatus', { deletedStatus: 'deleted' })
+      .getCount();
 
-    if (provisionsCount > 0) {
+    if (blockingProvisionsCount > 0) {
       throw new ConflictException(
-        `Plan mapping is used by ${provisionsCount} provision(s) and cannot be deleted`,
+        `Plan mapping is used by ${blockingProvisionsCount} non-deleted provision(s) and cannot be deleted`,
       );
     }
 
