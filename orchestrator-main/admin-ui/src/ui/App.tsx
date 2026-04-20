@@ -1056,7 +1056,7 @@ function NodesPanel({
       <section className="panel table-panel">
         <h2>VPN Nodes</h2>
         <div className="table-wrap">
-          <table>
+          <table className="nodes-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -1391,6 +1391,14 @@ function ProvisionsPanel({
             <div className="detail-grid">
               <div className="detail-block">
                 <h3>Meta</h3>
+                <div className="detail-link-block">
+                  <strong>VPN node</strong>
+                  <div>{selectedProvision.vpnNodeId ?? 'none'}</div>
+                </div>
+                <div className="detail-link-block">
+                  <strong>VPN login</strong>
+                  <div>{selectedProvision.vpnLogin ?? 'none'}</div>
+                </div>
                 <dl className="detail-list">
                   <dt>User</dt>
                   <dd>{selectedProvision.email}</dd>
@@ -1398,10 +1406,6 @@ function ProvisionsPanel({
                   <dd>{selectedProvision.externalUserId}</dd>
                   <dt>Subscription</dt>
                   <dd>{selectedProvision.externalSubscriptionId}</dd>
-                  <dt>VPN node</dt>
-                  <dd>{selectedProvision.vpnNodeId ?? 'none'}</dd>
-                  <dt>VPN login</dt>
-                  <dd>{selectedProvision.vpnLogin ?? 'none'}</dd>
                   <dt>Storage</dt>
                   <dd>{selectedProvision.storageStatus}</dd>
                   <dt>Days left</dt>
@@ -1415,27 +1419,6 @@ function ProvisionsPanel({
                 </dl>
               </div>
               <div className="detail-block">
-                <h3>Quick actions</h3>
-                <div className="row-actions detail-actions">
-                  <button
-                    disabled={!selectedProvision.subscriptionLink}
-                    onClick={() => {
-                      if (selectedProvision.subscriptionLink) {
-                        window.open(selectedProvision.subscriptionLink, '_blank', 'noopener,noreferrer');
-                      }
-                    }}
-                    type="button"
-                  >
-                    Open subscription
-                  </button>
-                  <button
-                    disabled={selectedProvision.status === 'deleted'}
-                    onClick={() => onDeleteNow(selectedProvision.id)}
-                    type="button"
-                  >
-                    Delete now
-                  </button>
-                </div>
                 <h3>Links & State</h3>
                 <div className="detail-link-block">
                   <strong>Subscription URL</strong>
