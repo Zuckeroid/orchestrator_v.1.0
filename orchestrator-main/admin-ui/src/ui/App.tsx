@@ -1029,7 +1029,11 @@ function NodesPanel({
                   </td>
                   <td>{node.status}</td>
                   <td>
-                    {node.healthStatus}
+                    <span
+                      className={`status-pill ${healthTone(node.healthStatus)}`}
+                    >
+                      {node.healthStatus}
+                    </span>
                     {node.failureCount > 0 ? (
                       <span className="cell-note">fails: {node.failureCount}</span>
                     ) : null}
@@ -1629,6 +1633,19 @@ function formatDaysLeft(value?: string | null): string {
   }
 
   return `${days}d`;
+}
+
+function healthTone(value?: string | null): string {
+  switch (value) {
+    case 'online':
+      return 'green';
+    case 'degraded':
+      return 'yellow';
+    case 'offline':
+      return 'red';
+    default:
+      return 'slate';
+  }
 }
 
 function createLocalDateTimeValue(daysFromNow: number): string {
