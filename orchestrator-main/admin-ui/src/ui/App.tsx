@@ -2050,10 +2050,10 @@ function resolveCountryCode(country?: string | null): string | null {
     singapore: 'sg',
     usa: 'us',
     us: 'us',
-    united states: 'us',
+    'united states': 'us',
     canada: 'ca',
     uk: 'gb',
-    united kingdom: 'gb',
+    'united kingdom': 'gb',
     britain: 'gb',
     england: 'gb',
   };
