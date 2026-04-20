@@ -621,11 +621,6 @@ function Dashboard({
         <Metric title="Database" value={health?.db ?? 'unknown'} tone="teal" />
         <Metric title="Redis" value={health?.redis ?? 'unknown'} tone="yellow" />
         <Metric
-          title="Mode"
-          value={health?.runtime?.mode ?? (health?.testMode ? 'test' : 'production')}
-          tone={health?.runtime?.mode === 'test' || health?.testMode ? 'yellow' : 'green'}
-        />
-        <Metric
           title="Billing"
           value={health?.billing?.status ?? 'disabled'}
           tone={statusTone(health?.billing?.status)}
@@ -642,11 +637,11 @@ function Dashboard({
         <Metric title="Failed events" value={failedEvents} tone="red" />
         <Metric title="Queue delayed" value={queue?.counts.delayed ?? 0} tone="yellow" />
       </section>
-      <section className="content-grid">
+      <section className="dashboard-top-grid">
         <NodeLoad nodes={view.nodes} />
         <SystemSummary health={health} />
       </section>
-      <section className="content-grid">
+      <section className="dashboard-bottom-grid">
         <ProvisionSnapshot provisions={view.provisions} />
       </section>
     </>
@@ -1374,185 +1369,166 @@ function ProvisionsPanel({
 
   return (
     <>
-      <section className="panel table-panel">
-        <div className="panel-heading">
-          <h2>Provisions</h2>
-          <label className="inline-filter">
-            Status
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-            >
-              <option value="all">All</option>
-              {statuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Subscription</th>
-                <th>Status</th>
-                <th>Storage</th>
-                <th>VPN Login</th>
-                <th>Days left</th>
-                <th>Delete after</th>
-                <th>Link</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paged.map((provision) => (
-                <tr
-                  key={provision.id}
-                  className={
-                    provision.id === selectedProvisionId ? 'event-row active' : 'event-row'
-                  }
-                  onClick={() => setSelectedProvisionId(provision.id)}
-                >
-                  <td>{provision.email}</td>
-                  <td>{provision.externalSubscriptionId}</td>
-                  <td>
-                    <span className={`status-pill ${statusTone(provision.status)}`}>
-                      {provision.status}
-                    </span>
-                  </td>
-                  <td>{provision.storageStatus}</td>
-                  <td>{provision.vpnLogin ?? 'none'}</td>
-                  <td>{formatDaysLeft(provision.serviceExpiresAt)}</td>
-                  <td>{formatDate(provision.deleteAfter)}</td>
-                  <td>
-                    {provision.subscriptionLink ? (
+      <section className="provisions-layout">
+        <section className="panel provision-details-panel">
+          <div className="panel-heading">
+            <h2>Provision Details</h2>
+            {selectedProvision ? (
+              <span className={`status-pill ${statusTone(selectedProvision.status)}`}>
+                {selectedProvision.status}
+              </span>
+            ) : null}
+          </div>
+          {detailsLoading ? <p>Loading provision details...</p> : null}
+          {detailsError ? <div className="error-line">{detailsError}</div> : null}
+          {!detailsLoading && !detailsError && !selectedProvision ? (
+            <p className="muted">Select a provision to inspect details.</p>
+          ) : null}
+          {!detailsLoading && !detailsError && selectedProvision ? (
+            <div className="detail-grid">
+              <div className="detail-block">
+                <h3>Meta</h3>
+                <dl className="detail-list">
+                  <dt>User</dt>
+                  <dd>{selectedProvision.email}</dd>
+                  <dt>User ID</dt>
+                  <dd>{selectedProvision.externalUserId}</dd>
+                  <dt>Subscription</dt>
+                  <dd>{selectedProvision.externalSubscriptionId}</dd>
+                  <dt>VPN node</dt>
+                  <dd>{selectedProvision.vpnNodeId ?? 'none'}</dd>
+                  <dt>VPN login</dt>
+                  <dd>{selectedProvision.vpnLogin ?? 'none'}</dd>
+                  <dt>Storage</dt>
+                  <dd>{selectedProvision.storageStatus}</dd>
+                  <dt>Days left</dt>
+                  <dd>{formatDaysLeft(selectedProvision.serviceExpiresAt)}</dd>
+                  <dt>Delete after</dt>
+                  <dd>{formatDate(selectedProvision.deleteAfter)}</dd>
+                  <dt>Created</dt>
+                  <dd>{formatDate(selectedProvision.createdAt)}</dd>
+                  <dt>Updated</dt>
+                  <dd>{formatDate(selectedProvision.updatedAt)}</dd>
+                </dl>
+              </div>
+              <div className="detail-block">
+                <h3>Quick actions</h3>
+                <div className="row-actions">
+                  <button
+                    disabled={!selectedProvision.subscriptionLink}
+                    onClick={() => {
+                      if (selectedProvision.subscriptionLink) {
+                        window.open(selectedProvision.subscriptionLink, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    type="button"
+                  >
+                    Open subscription
+                  </button>
+                  <button
+                    disabled={selectedProvision.status === 'deleted'}
+                    onClick={() => onDeleteNow(selectedProvision.id)}
+                    type="button"
+                  >
+                    Delete now
+                  </button>
+                </div>
+                <h3>Links & State</h3>
+                <dl className="detail-list">
+                  <dt>Subscription URL</dt>
+                  <dd>
+                    {selectedProvision.subscriptionLink ? (
                       <a
-                        href={provision.subscriptionLink}
+                        href={selectedProvision.subscriptionLink}
                         target="_blank"
                         rel="noreferrer"
-                        onClick={(event) => event.stopPropagation()}
                       >
-                        Open
+                        {selectedProvision.subscriptionLink}
                       </a>
                     ) : (
                       'none'
                     )}
-                  </td>
-                  <td>
-                    <button
-                      disabled={provision.status === 'deleted'}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDeleteNow(provision.id);
-                      }}
-                      type="button"
-                    >
-                      Delete now
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <PaginationControls
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={filtered.length}
-          pageSize={PROVISIONS_PAGE_SIZE}
-          onPageChange={setPage}
-        />
-      </section>
-      <section className="panel">
-        <div className="panel-heading">
-          <h2>Provision Details</h2>
-          {selectedProvision ? (
-            <span className={`status-pill ${statusTone(selectedProvision.status)}`}>
-              {selectedProvision.status}
-            </span>
-          ) : null}
-        </div>
-        {detailsLoading ? <p>Loading provision details...</p> : null}
-        {detailsError ? <div className="error-line">{detailsError}</div> : null}
-        {!detailsLoading && !detailsError && !selectedProvision ? (
-          <p className="muted">Select a provision to inspect details.</p>
-        ) : null}
-        {!detailsLoading && !detailsError && selectedProvision ? (
-          <div className="detail-grid">
-            <div className="detail-block">
-              <h3>Meta</h3>
-              <dl className="detail-list">
-                <dt>User</dt>
-                <dd>{selectedProvision.email}</dd>
-                <dt>User ID</dt>
-                <dd>{selectedProvision.externalUserId}</dd>
-                <dt>Subscription</dt>
-                <dd>{selectedProvision.externalSubscriptionId}</dd>
-                <dt>VPN node</dt>
-                <dd>{selectedProvision.vpnNodeId ?? 'none'}</dd>
-                <dt>VPN login</dt>
-                <dd>{selectedProvision.vpnLogin ?? 'none'}</dd>
-                <dt>Storage</dt>
-                <dd>{selectedProvision.storageStatus}</dd>
-                <dt>Days left</dt>
-                <dd>{formatDaysLeft(selectedProvision.serviceExpiresAt)}</dd>
-                <dt>Delete after</dt>
-                <dd>{formatDate(selectedProvision.deleteAfter)}</dd>
-                <dt>Created</dt>
-                <dd>{formatDate(selectedProvision.createdAt)}</dd>
-                <dt>Updated</dt>
-                <dd>{formatDate(selectedProvision.updatedAt)}</dd>
-              </dl>
-            </div>
-            <div className="detail-block">
-              <h3>Quick actions</h3>
-              <div className="row-actions">
-                <button
-                  disabled={!selectedProvision.subscriptionLink}
-                  onClick={() => {
-                    if (selectedProvision.subscriptionLink) {
-                      window.open(selectedProvision.subscriptionLink, '_blank', 'noopener,noreferrer');
-                    }
-                  }}
-                  type="button"
-                >
-                  Open subscription
-                </button>
-                <button
-                  disabled={selectedProvision.status === 'deleted'}
-                  onClick={() => onDeleteNow(selectedProvision.id)}
-                  type="button"
-                >
-                  Delete now
-                </button>
+                  </dd>
+                  <dt>Error</dt>
+                  <dd>{selectedProvision.error ?? 'none'}</dd>
+                  <dt>Deleted at</dt>
+                  <dd>{formatDate(selectedProvision.deletedAt)}</dd>
+                </dl>
               </div>
-              <h3>Links & State</h3>
-              <dl className="detail-list">
-                <dt>Subscription URL</dt>
-                <dd>
-                  {selectedProvision.subscriptionLink ? (
-                    <a
-                      href={selectedProvision.subscriptionLink}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {selectedProvision.subscriptionLink}
-                    </a>
-                  ) : (
-                    'none'
-                  )}
-                </dd>
-                <dt>Error</dt>
-                <dd>{selectedProvision.error ?? 'none'}</dd>
-                <dt>Deleted at</dt>
-                <dd>{formatDate(selectedProvision.deletedAt)}</dd>
-              </dl>
             </div>
+          ) : null}
+        </section>
+        <section className="panel table-panel">
+          <div className="panel-heading">
+            <h2>Provisions</h2>
+            <label className="inline-filter">
+              Status
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="all">All</option>
+                {statuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
-        ) : null}
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Subscription</th>
+                  <th>Status</th>
+                  <th>Storage</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paged.map((provision) => (
+                  <tr
+                    key={provision.id}
+                    className={
+                      provision.id === selectedProvisionId ? 'event-row active' : 'event-row'
+                    }
+                    onClick={() => setSelectedProvisionId(provision.id)}
+                  >
+                    <td>{provision.email}</td>
+                    <td>{provision.externalSubscriptionId}</td>
+                    <td>
+                      <span className={`status-pill ${statusTone(provision.status)}`}>
+                        {provision.status}
+                      </span>
+                    </td>
+                    <td>{provision.storageStatus}</td>
+                    <td>
+                      <button
+                        disabled={provision.status === 'deleted'}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDeleteNow(provision.id);
+                        }}
+                        type="button"
+                      >
+                        Delete now
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <PaginationControls
+            page={currentPage}
+            totalPages={totalPages}
+            totalItems={filtered.length}
+            pageSize={PROVISIONS_PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        </section>
       </section>
     </>
   );
@@ -1953,18 +1929,52 @@ function EventsPanel({
 }
 
 function AuditPanel({ auditLogs }: { auditLogs: AuditLog[] }) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(Math.ceil(auditLogs.length / EVENTS_PAGE_SIZE), 1);
+  const currentPage = Math.min(page, totalPages);
+  const paged = paginate(auditLogs, currentPage, EVENTS_PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [auditLogs.length]);
+
   return (
-    <DataTable
-      title="Audit Logs"
-      headers={['Actor', 'Entity', 'Action', 'Entity ID', 'Created']}
-      rows={auditLogs.map((log) => [
-        log.actor ?? 'system',
-        log.entityType,
-        log.action,
-        log.entityId ?? '',
-        new Date(log.createdAt).toLocaleString(),
-      ])}
-    />
+    <section className="panel table-panel">
+      <div className="panel-heading">
+        <h2>Audit Logs</h2>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Actor</th>
+              <th>Entity</th>
+              <th>Action</th>
+              <th>Entity ID</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paged.map((log) => (
+              <tr key={log.id}>
+                <td>{log.actor ?? 'system'}</td>
+                <td>{log.entityType}</td>
+                <td>{log.action}</td>
+                <td>{log.entityId ?? ''}</td>
+                <td>{new Date(log.createdAt).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <PaginationControls
+        page={currentPage}
+        totalPages={totalPages}
+        totalItems={auditLogs.length}
+        pageSize={EVENTS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
+    </section>
   );
 }
 

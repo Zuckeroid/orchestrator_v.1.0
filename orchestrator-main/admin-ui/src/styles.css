@@ -300,13 +300,32 @@ input[type="checkbox"] {
   gap: 18px;
 }
 
+.dashboard-top-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.8fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.dashboard-bottom-grid {
+  display: grid;
+  gap: 18px;
+}
+
 .split-layout {
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
 }
 
 .events-layout {
   display: grid;
-  grid-template-columns: minmax(500px, 620px) minmax(0, 1fr);
+  grid-template-columns: minmax(580px, 720px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.provisions-layout {
+  display: grid;
+  grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -558,12 +577,9 @@ td {
 }
 
 .country-flag {
-  width: 16px;
-  height: 12px;
+  width: 18px;
+  height: 14px;
   flex: 0 0 auto;
-  border: 1px solid #cbd5e1;
-  border-radius: 2px;
-  background: #f8fafc;
   object-fit: cover;
 }
 
@@ -677,8 +693,11 @@ td {
 
   .topbar,
   .content-grid,
+  .dashboard-top-grid,
+  .dashboard-bottom-grid,
   .split-layout,
-  .events-layout {
+  .events-layout,
+  .provisions-layout {
     grid-template-columns: 1fr;
   }
 
