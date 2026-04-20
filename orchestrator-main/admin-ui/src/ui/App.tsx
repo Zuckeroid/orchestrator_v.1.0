@@ -1454,13 +1454,69 @@ function EventsPanel({
   queue?: QueueOverview;
 }) {
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<ProcessedEvent | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
   const filtered = events.filter((event) =>
     statusFilter === 'all' ? true : event.status === statusFilter,
   );
   const statuses = uniqueValues(events.map((item) => item.status));
+  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
+
+  useEffect(() => {
+    if (filtered.length === 0) {
+      setSelectedEventId(null);
+      setSelectedEvent(null);
+      setDetailsError('');
+      return;
+    }
+
+    const existing = filtered.find((event) => event.id === selectedEventId);
+    if (!existing) {
+      setSelectedEventId(filtered[0].id);
+    }
+  }, [filtered, selectedEventId]);
+
+  useEffect(() => {
+    if (!selectedEventId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadDetails() {
+      setDetailsLoading(true);
+      setDetailsError('');
+      try {
+        const details = await api.get<ProcessedEvent>(
+          `/processed-events/${selectedEventId}`,
+        );
+        if (!cancelled) {
+          setSelectedEvent(details);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setSelectedEvent(null);
+          setDetailsError(caught instanceof Error ? caught.message : String(caught));
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailsLoading(false);
+        }
+      }
+    }
+
+    void loadDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, selectedEventId]);
 
   return (
-    <section className="content-grid">
+    <>
+      <section className="content-grid">
       <DataTable
         title="Queue"
         headers={['State', 'Count']}
@@ -1470,36 +1526,109 @@ function EventsPanel({
             : []
         }
       />
-      <DataTable
-        title="Processed Events"
-        actions={
-          <label className="inline-filter">
-            Status
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-            >
-              <option value="all">All</option>
-              {statuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-        }
-        headers={['Event', 'Type', 'Subscription', 'Status', 'Error']}
-        rows={filtered.map((event) => [
-          event.eventId,
-          event.eventType,
-          event.externalSubscriptionId ?? 'none',
-          <span className={`status-pill ${statusTone(event.status)}`}>
-            {event.status}
-          </span>,
-          event.error ?? '',
-        ])}
-      />
-    </section>
+        <section className="panel table-panel">
+          <div className="panel-heading">
+            <h2>Processed Events</h2>
+            <label className="inline-filter">
+              Status
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="all">All</option>
+                {statuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Type</th>
+                  <th>Subscription</th>
+                  <th>Status</th>
+                  <th>Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((event) => (
+                  <tr
+                    key={event.id}
+                    className={event.id === selectedEventId ? 'event-row active' : 'event-row'}
+                    onClick={() => setSelectedEventId(event.id)}
+                  >
+                    <td>{event.eventId}</td>
+                    <td>{event.eventType}</td>
+                    <td>{event.externalSubscriptionId ?? 'none'}</td>
+                    <td>
+                      <span className={`status-pill ${statusTone(event.status)}`}>
+                        {event.status}
+                      </span>
+                    </td>
+                    <td>{event.error ?? ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+      <section className="panel">
+        <div className="panel-heading">
+          <h2>Event Details</h2>
+          {selectedEvent ? (
+            <span className={`status-pill ${statusTone(selectedEvent.status)}`}>
+              {selectedEvent.status}
+            </span>
+          ) : null}
+        </div>
+        {detailsLoading ? <p>Loading event details...</p> : null}
+        {detailsError ? <div className="error-line">{detailsError}</div> : null}
+        {!detailsLoading && !detailsError && !selectedEvent ? (
+          <p className="muted">Select an event to inspect payload and errors.</p>
+        ) : null}
+        {!detailsLoading && !detailsError && selectedEvent ? (
+          <div className="detail-grid">
+            <div className="detail-block">
+              <h3>Meta</h3>
+              <dl className="detail-list">
+                <dt>Event ID</dt>
+                <dd>{selectedEvent.eventId}</dd>
+                <dt>Type</dt>
+                <dd>{selectedEvent.eventType}</dd>
+                <dt>User</dt>
+                <dd>{selectedEvent.externalUserId ?? 'none'}</dd>
+                <dt>Subscription</dt>
+                <dd>{selectedEvent.externalSubscriptionId ?? 'none'}</dd>
+                <dt>Order</dt>
+                <dd>{selectedEvent.externalOrderId ?? 'none'}</dd>
+                <dt>Payment</dt>
+                <dd>{selectedEvent.externalPaymentId ?? 'none'}</dd>
+                <dt>Plan</dt>
+                <dd>{selectedEvent.externalPlanId ?? 'none'}</dd>
+                <dt>Received</dt>
+                <dd>{formatDate(selectedEvent.receivedAt)}</dd>
+                <dt>Processed</dt>
+                <dd>{formatDate(selectedEvent.processedAt)}</dd>
+              </dl>
+            </div>
+            <div className="detail-block">
+              <h3>Error</h3>
+              <pre className="json-block">{selectedEvent.error ?? 'none'}</pre>
+              <h3>Payload</h3>
+              <pre className="json-block">
+                {formatJson(selectedEvent.payload ?? {})}
+              </pre>
+            </div>
+          </div>
+        ) : null}
+      </section>
+    </>
   );
 }
 
@@ -1571,6 +1700,10 @@ function uniqueValues(values: string[]) {
   return Array.from(new Set(values)).sort((left, right) =>
     left.localeCompare(right),
   );
+}
+
+function formatJson(value: unknown): string {
+  return JSON.stringify(value, null, 2);
 }
 
 function buildPlanPayload(form: PlanFormState) {

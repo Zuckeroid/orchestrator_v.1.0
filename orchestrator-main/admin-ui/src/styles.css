@@ -124,6 +124,7 @@ nav button:hover {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -136,6 +137,10 @@ h1 {
 h2 {
   margin-bottom: 16px;
   font-size: 18px;
+}
+
+h3 {
+  font-size: 15px;
 }
 
 .topbar p {
@@ -394,6 +399,18 @@ td {
   overflow-wrap: anywhere;
 }
 
+.event-row {
+  cursor: pointer;
+}
+
+.event-row:hover td {
+  background: #f8fafc;
+}
+
+.event-row.active td {
+  background: #ecfeff;
+}
+
 .load-row {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px);
@@ -496,6 +513,50 @@ td {
   color: #475569;
 }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.detail-block {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-list {
+  display: grid;
+  grid-template-columns: minmax(110px, 140px) minmax(0, 1fr);
+  gap: 8px 12px;
+}
+
+.detail-list dt {
+  color: #475569;
+  font-weight: 700;
+}
+
+.detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.json-block {
+  margin: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family:
+    ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1180px) {
   .metric-grid {
     grid-template-columns: repeat(3, minmax(130px, 1fr));
@@ -547,6 +608,11 @@ td {
   }
 
   .load-row {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-grid,
+  .detail-list {
     grid-template-columns: 1fr;
   }
 

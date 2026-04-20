@@ -214,10 +214,15 @@ export interface Provision {
 export interface ProcessedEvent {
   id: string;
   eventId: string;
+  externalUserId?: string | null;
   eventType: string;
   externalSubscriptionId?: string | null;
+  externalOrderId?: string | null;
+  externalPaymentId?: string | null;
+  externalPlanId?: string | null;
   status: string;
   error?: string | null;
+  payload?: Record<string, unknown>;
   receivedAt: string;
   processedAt?: string | null;
 }
