@@ -28,10 +28,12 @@ export class FossbillingBillingProvider implements BillingProvider {
   async updateServiceStatus(
     externalSubscriptionId: string,
     status: string,
+    error?: string | null,
   ): Promise<void> {
     await this.post('/api/guest/orchestrator/update_status', {
       external_subscription_id: externalSubscriptionId,
       status,
+      ...(error ? { error } : {}),
     });
   }
 

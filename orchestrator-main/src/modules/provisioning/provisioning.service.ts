@@ -108,18 +108,6 @@ export class ProvisioningService {
     this.ensurePaid(event);
 
     const provision = await this.provisionsService.getOrCreateFromEvent(event);
-    const plan = await this.plansService.resolveByExternalPlanId(
-      event.externalPlanId,
-    );
-
-    this.logger.log(
-      `Provisioning subscription ${event.externalSubscriptionId} for ${event.email}`,
-    );
-
-    await this.provisionsService.markProvisioning(provision);
-    const serviceExpiresAt =
-      this.parseServiceExpiresAt(event) ?? provision.serviceExpiresAt ?? undefined;
-
     let newVpnNode: VpnNodeEntity | undefined;
     let vpn: VpnClientResult | undefined;
     let vpnLoadIncremented = false;
@@ -128,6 +116,18 @@ export class ProvisioningService {
     let storageLoadIncremented = false;
 
     try {
+      const plan = await this.plansService.resolveByExternalPlanId(
+        event.externalPlanId,
+      );
+
+      this.logger.log(
+        `Provisioning subscription ${event.externalSubscriptionId} for ${event.email}`,
+      );
+
+      await this.provisionsService.markProvisioning(provision);
+      const serviceExpiresAt =
+        this.parseServiceExpiresAt(event) ?? provision.serviceExpiresAt ?? undefined;
+
       if (plan.vpnEnabled) {
         const vpnNode = provision.vpnNodeId
           ? await this.vpnNodesService.findById(provision.vpnNodeId)
@@ -268,6 +268,11 @@ export class ProvisioningService {
 
       await this.provisionsService.markFailed(
         provision,
+        error instanceof Error ? error.message : String(error),
+      );
+      await this.billingProvider.updateServiceStatus(
+        event.externalSubscriptionId,
+        'failed',
         error instanceof Error ? error.message : String(error),
       );
       throw error;

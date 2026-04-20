@@ -13,9 +13,10 @@ export class NoopBillingProvider implements BillingProvider {
   async updateServiceStatus(
     externalSubscriptionId: string,
     status: string,
+    error?: string | null,
   ): Promise<void> {
     this.logger.log(
-      `Billing status update: ${externalSubscriptionId} -> ${status}`,
+      `Billing status update: ${externalSubscriptionId} -> ${status}${error ? ` (${error})` : ''}`,
     );
   }
 
@@ -32,4 +33,3 @@ export class NoopBillingProvider implements BillingProvider {
     this.logger.log('Billing plan sync skipped by noop provider');
   }
 }
-

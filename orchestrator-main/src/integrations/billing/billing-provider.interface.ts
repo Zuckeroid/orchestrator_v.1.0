@@ -5,6 +5,7 @@ export interface BillingProvider {
   updateServiceStatus(
     externalSubscriptionId: string,
     status: string,
+    error?: string | null,
   ): Promise<void>;
   updateSubscriptionLink(
     externalSubscriptionId: string,
@@ -12,4 +13,3 @@ export interface BillingProvider {
   ): Promise<void>;
   syncPlans(): Promise<void>;
 }
-
