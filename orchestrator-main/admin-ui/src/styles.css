@@ -444,6 +444,26 @@ input[type="checkbox"] {
 }
 
 .nodes-table th:nth-child(4),
+.nodes-table td:nth-child(4) {
+  width: 6%;
+}
+
+.nodes-table th:nth-child(5),
+.nodes-table td:nth-child(5) {
+  width: 8%;
+}
+
+.nodes-table th:nth-child(6),
+.nodes-table td:nth-child(6) {
+  width: 6%;
+}
+
+.nodes-table th:nth-child(7),
+.nodes-table td:nth-child(7) {
+  width: 6%;
+}
+
+.nodes-table th:nth-child(4),
 .nodes-table td:nth-child(4),
 .nodes-table th:nth-child(5),
 .nodes-table td:nth-child(5),
