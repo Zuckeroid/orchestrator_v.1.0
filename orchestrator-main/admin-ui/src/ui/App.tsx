@@ -133,6 +133,10 @@ const DEFAULT_API_SETTINGS = {
   adminActor: 'admin',
 };
 
+type ThemeMode = 'light' | 'dark';
+
+const THEME_STORAGE_KEY = 'orchestrator-admin-theme';
+
 function createWebhookForm(): WebhookFormState {
   const suffix = Date.now();
 
@@ -166,6 +170,20 @@ export function App() {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [storageBackendForm, setStorageBackendForm] =
     useState<StorageBackendFormState>(emptyStorageBackendForm);
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') {
+      return 'light';
+    }
+
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      return savedTheme;
+    }
+
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  });
 
   const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
 
@@ -226,6 +244,11 @@ export function App() {
         : { ...current, externalPlanId: view.plans[0].externalPlanId },
     );
   }, [view.plans, webhookForm.externalPlanId]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('theme-dark', theme === 'dark');
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   async function createPlan(event: FormEvent) {
     event.preventDefault();
@@ -525,9 +548,19 @@ export function App() {
               <p>{status}</p>
             </div>
           </div>
-          <button className="primary" onClick={refreshAll} disabled={isLoading}>
-            {isLoading ? 'Refreshing' : 'Refresh'}
-          </button>
+          <div className="topbar-actions">
+            <button
+              type="button"
+              onClick={() =>
+                setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
+              }
+            >
+              {theme === 'dark' ? 'Light theme' : 'Dark theme'}
+            </button>
+            <button className="primary" onClick={refreshAll} disabled={isLoading}>
+              {isLoading ? 'Refreshing' : 'Refresh'}
+            </button>
+          </div>
         </header>
 
         {error ? <div className="error-line">{error}</div> : null}
