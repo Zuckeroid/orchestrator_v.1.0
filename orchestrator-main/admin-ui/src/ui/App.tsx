@@ -628,17 +628,19 @@ function NodeLoad({ nodes }: { nodes: VpnNode[] }) {
         const percent = Math.round((node.currentLoad / node.capacity) * 100);
         return (
           <div className="load-row" key={node.id}>
-            <div>
+            <div className="load-node">
               <strong>{node.name ?? node.host}</strong>
-              <span>
-                {node.currentLoad}/{node.capacity} clients
-              </span>
               <span className={`status-pill ${healthTone(node.healthStatus)}`}>
                 {node.healthStatus}
               </span>
             </div>
-            <div className="bar">
-              <span style={{ width: `${Math.min(percent, 100)}%` }} />
+            <div className="load-meter">
+              <div className="bar">
+                <span style={{ width: `${Math.min(percent, 100)}%` }} />
+              </div>
+              <span className="load-count">
+                {node.currentLoad}/{node.capacity}
+              </span>
             </div>
           </div>
         );
@@ -1221,7 +1223,11 @@ function ProvisionsPanel({
               <tr key={provision.id}>
                 <td>{provision.email}</td>
                 <td>{provision.externalSubscriptionId}</td>
-                <td>{provision.status}</td>
+                <td>
+                  <span className={`status-pill ${statusTone(provision.status)}`}>
+                    {provision.status}
+                  </span>
+                </td>
                 <td>{provision.storageStatus}</td>
                 <td>{provision.vpnLogin ?? 'none'}</td>
                 <td>{formatDaysLeft(provision.serviceExpiresAt)}</td>
@@ -1487,7 +1493,9 @@ function EventsPanel({
           event.eventId,
           event.eventType,
           event.externalSubscriptionId ?? 'none',
-          event.status,
+          <span className={`status-pill ${statusTone(event.status)}`}>
+            {event.status}
+          </span>,
           event.error ?? '',
         ])}
       />
@@ -1520,7 +1528,7 @@ function DataTable({
   title: string;
   actions?: ReactNode;
   headers: string[];
-  rows: (string | number | boolean | null)[][];
+  rows: ReactNode[][];
 }) {
   return (
     <section className="panel table-panel">
@@ -1541,7 +1549,7 @@ function DataTable({
             {rows.map((row, index) => (
               <tr key={index}>
                 {row.map((cell, cellIndex) => (
-                  <td key={cellIndex}>{String(cell ?? '')}</td>
+                  <td key={cellIndex}>{cell ?? ''}</td>
                 ))}
               </tr>
             ))}
@@ -1632,6 +1640,27 @@ function healthTone(value?: string | null): string {
     case 'degraded':
       return 'yellow';
     case 'offline':
+      return 'red';
+    default:
+      return 'slate';
+  }
+}
+
+function statusTone(value?: string | null): string {
+  switch (value) {
+    case 'active':
+    case 'completed':
+    case 'paid':
+      return 'green';
+    case 'processing':
+    case 'queued':
+    case 'provisioning':
+    case 'suspended':
+    case 'delayed':
+      return 'yellow';
+    case 'failed':
+    case 'cancelled':
+    case 'deleted':
       return 'red';
     default:
       return 'slate';
