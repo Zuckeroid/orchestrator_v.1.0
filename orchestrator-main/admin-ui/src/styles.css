@@ -306,6 +306,31 @@ input[type="checkbox"] {
   padding: 18px;
 }
 
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.panel-heading h2 {
+  margin-bottom: 0;
+}
+
+.inline-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.inline-filter select {
+  min-width: 140px;
+}
+
 .form-panel {
   align-self: start;
   display: grid;
@@ -390,6 +415,10 @@ td {
 .load-row span {
   color: #64748b;
   font-size: 13px;
+}
+
+.load-row .status-pill {
+  margin-top: 8px;
 }
 
 .bar {
@@ -507,6 +536,15 @@ td {
 
   .load-row {
     grid-template-columns: 1fr;
+  }
+
+  .panel-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .inline-filter {
+    width: 100%;
   }
 }
 

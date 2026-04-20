@@ -1,7 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   ApiClient,
-  ApiSettings,
   AuditLog,
   BillingWebhookEvent,
   BillingWebhookPayload,
@@ -14,7 +13,6 @@ import {
   VpnNode,
   VpnNodeCheckResult,
 } from '../api';
-import { clearSettings, loadSettings, saveSettings } from '../storage';
 
 type TabId =
   | 'dashboard'
@@ -121,6 +119,12 @@ const emptyNodeForm: VpnNodeFormState = {
   capacity: '100',
 };
 
+const DEFAULT_API_SETTINGS = {
+  apiBaseUrl: '/api/v1',
+  adminApiKey: '',
+  adminActor: 'admin',
+};
+
 function createWebhookForm(): WebhookFormState {
   const suffix = Date.now();
 
@@ -139,8 +143,6 @@ function createWebhookForm(): WebhookFormState {
 }
 
 export function App() {
-  const [settings, setSettings] = useState<ApiSettings>(() => loadSettings());
-  const [draftSettings, setDraftSettings] = useState<ApiSettings>(settings);
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [view, setView] = useState<ViewState>(emptyViewState);
   const [status, setStatus] = useState('Ready');
@@ -157,15 +159,9 @@ export function App() {
   const [storageBackendForm, setStorageBackendForm] =
     useState<StorageBackendFormState>(emptyStorageBackendForm);
 
-  const api = useMemo(() => new ApiClient(settings), [settings]);
-  const isConfigured = settings.apiBaseUrl.trim().length > 0;
+  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
 
   async function refreshAll() {
-    if (!isConfigured) {
-      setStatus('Enter an API base URL to connect');
-      return;
-    }
-
     setIsLoading(true);
     setError('');
     try {
@@ -209,7 +205,7 @@ export function App() {
 
   useEffect(() => {
     void refreshAll();
-  }, [api, isConfigured]);
+  }, [api]);
 
   useEffect(() => {
     if (webhookForm.externalPlanId || view.plans.length === 0) {
@@ -222,21 +218,6 @@ export function App() {
         : { ...current, externalPlanId: view.plans[0].externalPlanId },
     );
   }, [view.plans, webhookForm.externalPlanId]);
-
-  function handleSaveSettings(event: FormEvent) {
-    event.preventDefault();
-    saveSettings(draftSettings);
-    setSettings(draftSettings);
-    setStatus('Settings saved');
-  }
-
-  function handleClearSettings() {
-    clearSettings();
-    const next = loadSettings();
-    setSettings(next);
-    setDraftSettings(next);
-    setStatus('Settings cleared');
-  }
 
   async function createPlan(event: FormEvent) {
     event.preventDefault();
@@ -513,55 +494,6 @@ export function App() {
           </button>
         </header>
 
-        <section className="settings-band">
-          <form onSubmit={handleSaveSettings} className="settings-form">
-            <label>
-              API base URL
-              <input
-                value={draftSettings.apiBaseUrl}
-                onChange={(event) =>
-                  setDraftSettings({
-                    ...draftSettings,
-                    apiBaseUrl: event.target.value,
-                  })
-                }
-              />
-            </label>
-            <label>
-              Admin key (direct API only)
-              <input
-                type="password"
-                placeholder="Auto via VPS proxy"
-                value={draftSettings.adminApiKey}
-                onChange={(event) =>
-                  setDraftSettings({
-                    ...draftSettings,
-                    adminApiKey: event.target.value,
-                  })
-                }
-              />
-            </label>
-            <label>
-              Actor
-              <input
-                value={draftSettings.adminActor}
-                onChange={(event) =>
-                  setDraftSettings({
-                    ...draftSettings,
-                    adminActor: event.target.value,
-                  })
-                }
-              />
-            </label>
-            <button className="primary" type="submit">
-              Save
-            </button>
-            <button type="button" onClick={handleClearSettings}>
-              Clear
-            </button>
-          </form>
-        </section>
-
         {error ? <div className="error-line">{error}</div> : null}
 
         {activeTab === 'dashboard' ? (
@@ -700,6 +632,9 @@ function NodeLoad({ nodes }: { nodes: VpnNode[] }) {
               <strong>{node.name ?? node.host}</strong>
               <span>
                 {node.currentLoad}/{node.capacity} clients
+              </span>
+              <span className={`status-pill ${healthTone(node.healthStatus)}`}>
+                {node.healthStatus}
               </span>
             </div>
             <div className="bar">
@@ -1241,9 +1176,31 @@ function ProvisionsPanel({
   provisions: Provision[];
   onDeleteNow: (id: string) => void;
 }) {
+  const [statusFilter, setStatusFilter] = useState('all');
+  const filtered = provisions.filter((provision) =>
+    statusFilter === 'all' ? true : provision.status === statusFilter,
+  );
+  const statuses = uniqueValues(provisions.map((item) => item.status));
+
   return (
     <section className="panel table-panel">
-      <h2>Provisions</h2>
+      <div className="panel-heading">
+        <h2>Provisions</h2>
+        <label className="inline-filter">
+          Status
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="all">All</option>
+            {statuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -1260,7 +1217,7 @@ function ProvisionsPanel({
             </tr>
           </thead>
           <tbody>
-            {provisions.map((provision) => (
+            {filtered.map((provision) => (
               <tr key={provision.id}>
                 <td>{provision.email}</td>
                 <td>{provision.externalSubscriptionId}</td>
@@ -1490,6 +1447,12 @@ function EventsPanel({
   events: ProcessedEvent[];
   queue?: QueueOverview;
 }) {
+  const [statusFilter, setStatusFilter] = useState('all');
+  const filtered = events.filter((event) =>
+    statusFilter === 'all' ? true : event.status === statusFilter,
+  );
+  const statuses = uniqueValues(events.map((item) => item.status));
+
   return (
     <section className="content-grid">
       <DataTable
@@ -1503,8 +1466,24 @@ function EventsPanel({
       />
       <DataTable
         title="Processed Events"
+        actions={
+          <label className="inline-filter">
+            Status
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="all">All</option>
+              {statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+        }
         headers={['Event', 'Type', 'Subscription', 'Status', 'Error']}
-        rows={events.map((event) => [
+        rows={filtered.map((event) => [
           event.eventId,
           event.eventType,
           event.externalSubscriptionId ?? 'none',
@@ -1534,16 +1513,21 @@ function AuditPanel({ auditLogs }: { auditLogs: AuditLog[] }) {
 
 function DataTable({
   title,
+  actions,
   headers,
   rows,
 }: {
   title: string;
+  actions?: ReactNode;
   headers: string[];
   rows: (string | number | boolean | null)[][];
 }) {
   return (
     <section className="panel table-panel">
-      <h2>{title}</h2>
+      <div className="panel-heading">
+        <h2>{title}</h2>
+        {actions}
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -1573,6 +1557,12 @@ function groupCounts(values: string[]) {
     acc[value] = (acc[value] ?? 0) + 1;
     return acc;
   }, {});
+}
+
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values)).sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 function buildPlanPayload(form: PlanFormState) {
