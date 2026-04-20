@@ -331,7 +331,7 @@ input[type="checkbox"] {
 
 .provisions-layout {
   display: grid;
-  grid-template-columns: minmax(560px, 700px) minmax(0, 1fr);
+  grid-template-columns: minmax(580px, 720px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
