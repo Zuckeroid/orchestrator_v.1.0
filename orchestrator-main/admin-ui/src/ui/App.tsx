@@ -662,7 +662,10 @@ function NodeLoad({ nodes }: { nodes: VpnNode[] }) {
         return (
           <div className="load-row" key={node.id}>
             <div className="load-node">
-              <strong>{node.name ?? node.host}</strong>
+              <strong className="node-label">
+                {renderCountryFlag(node.country)}
+                <span>{node.name ?? node.host}</span>
+              </strong>
               <span className={`status-pill ${healthTone(node.healthStatus)}`}>
                 {node.healthStatus}
               </span>
@@ -1002,7 +1005,6 @@ function NodesPanel({
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Country</th>
                 <th>VDS Provider</th>
                 <th>Host</th>
                 <th>Role</th>
@@ -1017,9 +1019,13 @@ function NodesPanel({
             <tbody>
               {nodes.map((node) => (
                 <tr key={node.id}>
-                  <td>{node.name ?? 'unnamed'}</td>
-                  <td>{renderCountry(node.country)}</td>
-                  <td>{node.vdsProvider ?? 'none'}</td>
+                  <td>
+                    <span className="node-label">
+                      {renderCountryFlag(node.country)}
+                      <span>{node.name ?? 'unnamed'}</span>
+                    </span>
+                  </td>
+                  <td>{renderProviderLink(node.vdsProvider)}</td>
                   <td>
                     <a href={node.host} target="_blank" rel="noreferrer">
                       {node.host}
@@ -1845,7 +1851,6 @@ function EventsPanel({
                   <th>Type</th>
                   <th>Subscription</th>
                   <th>Status</th>
-                  <th>Error</th>
                 </tr>
               </thead>
               <tbody>
@@ -1863,7 +1868,6 @@ function EventsPanel({
                         {event.status}
                       </span>
                     </td>
-                    <td>{event.error ?? ''}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1941,18 +1945,14 @@ function DataTable({
   );
 }
 
-function renderCountry(country?: string | null) {
-  if (!country) {
-    return 'none';
-  }
-
+function renderCountryFlag(country?: string | null) {
   const code = resolveCountryCode(country);
   if (!code) {
-    return country;
+    return null;
   }
 
   return (
-    <span className="country-pill">
+    <span className="country-flag-wrap">
       <img
         className="country-flag"
         src={`https://flagcdn.com/16x12/${code}.png`}
@@ -1960,8 +1960,26 @@ function renderCountry(country?: string | null) {
         alt=""
         loading="lazy"
       />
-      <span>{country}</span>
     </span>
+  );
+}
+
+function renderProviderLink(provider?: string | null) {
+  if (!provider) {
+    return 'none';
+  }
+
+  const trimmed = provider.trim();
+  if (!trimmed) {
+    return 'none';
+  }
+
+  const href = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  return (
+    <a href={href} target="_blank" rel="noreferrer">
+      {trimmed}
+    </a>
   );
 }
 
