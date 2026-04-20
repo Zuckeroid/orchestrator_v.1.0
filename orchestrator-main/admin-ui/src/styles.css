@@ -122,6 +122,13 @@ nav button:hover {
   margin-bottom: 20px;
 }
 
+.title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 h1,
 h2,
 h3,
@@ -144,7 +151,6 @@ h3 {
 }
 
 .topbar p {
-  margin-top: 6px;
   color: #64748b;
 }
 
@@ -325,7 +331,7 @@ input[type="checkbox"] {
 
 .provisions-layout {
   display: grid;
-  grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
+  grid-template-columns: minmax(560px, 700px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -703,6 +709,10 @@ td {
 
   .topbar {
     display: grid;
+  }
+
+  .title-row {
+    align-items: flex-start;
   }
 
   .metric-grid {

@@ -487,8 +487,8 @@ export function App() {
     { id: 'nodes', label: 'VPN Nodes' },
     { id: 'storage', label: 'Storage Backends' },
     { id: 'provisions', label: 'Provisions' },
-    { id: 'webhook', label: 'Webhook Tester' },
     { id: 'events', label: 'Events' },
+    { id: 'webhook', label: 'Webhook Tester' },
     { id: 'audit', label: 'Audit' },
   ];
 
@@ -519,8 +519,10 @@ export function App() {
       <main className="workspace">
         <header className="topbar">
           <div>
-            <h1>{navItems.find((item) => item.id === activeTab)?.label}</h1>
-            <p>{status}</p>
+            <div className="title-row">
+              <h1>{navItems.find((item) => item.id === activeTab)?.label}</h1>
+              <p>{status}</p>
+            </div>
           </div>
           <button className="primary" onClick={refreshAll} disabled={isLoading}>
             {isLoading ? 'Refreshing' : 'Refresh'}
