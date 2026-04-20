@@ -1384,7 +1384,28 @@ function ProvisionsPanel({
               </dl>
             </div>
             <div className="detail-block">
-              <h3>Actions & Links</h3>
+              <h3>Quick actions</h3>
+              <div className="row-actions">
+                <button
+                  disabled={!selectedProvision.subscriptionLink}
+                  onClick={() => {
+                    if (selectedProvision.subscriptionLink) {
+                      window.open(selectedProvision.subscriptionLink, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  type="button"
+                >
+                  Open subscription
+                </button>
+                <button
+                  disabled={selectedProvision.status === 'deleted'}
+                  onClick={() => onDeleteNow(selectedProvision.id)}
+                  type="button"
+                >
+                  Delete now
+                </button>
+              </div>
+              <h3>Links & State</h3>
               <dl className="detail-list">
                 <dt>Subscription URL</dt>
                 <dd>
@@ -1701,34 +1722,38 @@ function EventsPanel({
               <p className="muted">Select an event to inspect payload and errors.</p>
             ) : null}
             {!detailsLoading && !detailsError && selectedEvent ? (
-              <div className="detail-block">
-                <h3>Meta</h3>
-                <dl className="detail-list">
-                  <dt>Event ID</dt>
-                  <dd>{selectedEvent.eventId}</dd>
-                  <dt>Type</dt>
-                  <dd>{selectedEvent.eventType}</dd>
-                  <dt>User</dt>
-                  <dd>{selectedEvent.externalUserId ?? 'none'}</dd>
-                  <dt>Subscription</dt>
-                  <dd>{selectedEvent.externalSubscriptionId ?? 'none'}</dd>
-                  <dt>Order</dt>
-                  <dd>{selectedEvent.externalOrderId ?? 'none'}</dd>
-                  <dt>Payment</dt>
-                  <dd>{selectedEvent.externalPaymentId ?? 'none'}</dd>
-                  <dt>Plan</dt>
-                  <dd>{selectedEvent.externalPlanId ?? 'none'}</dd>
-                  <dt>Received</dt>
-                  <dd>{formatDate(selectedEvent.receivedAt)}</dd>
-                  <dt>Processed</dt>
-                  <dd>{formatDate(selectedEvent.processedAt)}</dd>
-                </dl>
-                <h3>Error</h3>
-                <pre className="json-block">{selectedEvent.error ?? 'none'}</pre>
-                <h3>Payload</h3>
-                <pre className="json-block">
-                  {formatJson(selectedEvent.payload ?? {})}
-                </pre>
+              <div className="event-detail-layout">
+                <div className="detail-block">
+                  <h3>Meta</h3>
+                  <dl className="detail-list compact">
+                    <dt>Event ID</dt>
+                    <dd>{selectedEvent.eventId}</dd>
+                    <dt>Type</dt>
+                    <dd>{selectedEvent.eventType}</dd>
+                    <dt>User</dt>
+                    <dd>{selectedEvent.externalUserId ?? 'none'}</dd>
+                    <dt>Subscription</dt>
+                    <dd>{selectedEvent.externalSubscriptionId ?? 'none'}</dd>
+                    <dt>Order</dt>
+                    <dd>{selectedEvent.externalOrderId ?? 'none'}</dd>
+                    <dt>Payment</dt>
+                    <dd>{selectedEvent.externalPaymentId ?? 'none'}</dd>
+                    <dt>Plan</dt>
+                    <dd>{selectedEvent.externalPlanId ?? 'none'}</dd>
+                    <dt>Received</dt>
+                    <dd>{formatDate(selectedEvent.receivedAt)}</dd>
+                    <dt>Processed</dt>
+                    <dd>{formatDate(selectedEvent.processedAt)}</dd>
+                  </dl>
+                </div>
+                <div className="detail-block">
+                  <h3>Error</h3>
+                  <pre className="json-block">{selectedEvent.error ?? 'none'}</pre>
+                  <h3>Payload</h3>
+                  <pre className="json-block">
+                    {formatJson(selectedEvent.payload ?? {})}
+                  </pre>
+                </div>
               </div>
             ) : null}
           </section>

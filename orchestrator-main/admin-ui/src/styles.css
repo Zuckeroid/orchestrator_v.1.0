@@ -558,6 +558,12 @@ td {
   gap: 18px;
 }
 
+.event-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(140px, 1.2fr);
+  gap: 14px;
+}
+
 .detail-block {
   display: grid;
   gap: 10px;
@@ -567,6 +573,11 @@ td {
   display: grid;
   grid-template-columns: minmax(110px, 140px) minmax(0, 1fr);
   gap: 8px 12px;
+}
+
+.detail-list.compact {
+  grid-template-columns: minmax(72px, 100px) minmax(0, 1fr);
+  gap: 6px 10px;
 }
 
 .detail-list dt {
@@ -652,7 +663,8 @@ td {
   }
 
   .detail-grid,
-  .detail-list {
+  .detail-list,
+  .event-detail-layout {
     grid-template-columns: 1fr;
   }
 
