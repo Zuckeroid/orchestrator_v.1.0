@@ -124,7 +124,8 @@ const emptyNodeForm: VpnNodeFormState = {
 };
 
 const PROVISIONS_PAGE_SIZE = 10;
-const EVENTS_PAGE_SIZE = 15;
+const EVENTS_PAGE_SIZE = 10;
+const AUDIT_PAGE_SIZE = 15;
 
 const DEFAULT_API_SETTINGS = {
   apiBaseUrl: '/api/v1',
@@ -1415,7 +1416,7 @@ function ProvisionsPanel({
               </div>
               <div className="detail-block">
                 <h3>Quick actions</h3>
-                <div className="row-actions">
+                <div className="row-actions detail-actions">
                   <button
                     disabled={!selectedProvision.subscriptionLink}
                     onClick={() => {
@@ -1436,9 +1437,9 @@ function ProvisionsPanel({
                   </button>
                 </div>
                 <h3>Links & State</h3>
-                <dl className="detail-list">
-                  <dt>Subscription URL</dt>
-                  <dd>
+                <div className="detail-link-block">
+                  <strong>Subscription URL</strong>
+                  <div>
                     {selectedProvision.subscriptionLink ? (
                       <a
                         href={selectedProvision.subscriptionLink}
@@ -1450,7 +1451,9 @@ function ProvisionsPanel({
                     ) : (
                       'none'
                     )}
-                  </dd>
+                  </div>
+                </div>
+                <dl className="detail-list">
                   <dt>Error</dt>
                   <dd>{selectedProvision.error ?? 'none'}</dd>
                   <dt>Deleted at</dt>
@@ -1932,9 +1935,9 @@ function EventsPanel({
 
 function AuditPanel({ auditLogs }: { auditLogs: AuditLog[] }) {
   const [page, setPage] = useState(1);
-  const totalPages = Math.max(Math.ceil(auditLogs.length / EVENTS_PAGE_SIZE), 1);
+  const totalPages = Math.max(Math.ceil(auditLogs.length / AUDIT_PAGE_SIZE), 1);
   const currentPage = Math.min(page, totalPages);
-  const paged = paginate(auditLogs, currentPage, EVENTS_PAGE_SIZE);
+  const paged = paginate(auditLogs, currentPage, AUDIT_PAGE_SIZE);
 
   useEffect(() => {
     setPage(1);
@@ -1973,7 +1976,7 @@ function AuditPanel({ auditLogs }: { auditLogs: AuditLog[] }) {
         page={currentPage}
         totalPages={totalPages}
         totalItems={auditLogs.length}
-        pageSize={EVENTS_PAGE_SIZE}
+        pageSize={AUDIT_PAGE_SIZE}
         onPageChange={setPage}
       />
     </section>

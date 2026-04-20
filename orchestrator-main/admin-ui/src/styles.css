@@ -404,6 +404,11 @@ input[type="checkbox"] {
   gap: 8px;
 }
 
+.detail-actions button {
+  min-height: 38px;
+  white-space: nowrap;
+}
+
 .table-panel {
   min-width: 0;
 }
@@ -645,6 +650,21 @@ td {
 
 .detail-list dd {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-link-block {
+  display: grid;
+  gap: 6px;
+}
+
+.detail-link-block strong {
+  color: #475569;
+  font-size: 13px;
+}
+
+.detail-link-block a {
+  display: inline-block;
   overflow-wrap: anywhere;
 }
 
