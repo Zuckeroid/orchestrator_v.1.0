@@ -621,6 +621,11 @@ function Dashboard({
         <Metric title="Database" value={health?.db ?? 'unknown'} tone="teal" />
         <Metric title="Redis" value={health?.redis ?? 'unknown'} tone="yellow" />
         <Metric
+          title="Mode"
+          value={health?.runtime?.mode ?? (health?.testMode ? 'test' : 'production')}
+          tone={health?.runtime?.mode === 'test' || health?.testMode ? 'yellow' : 'green'}
+        />
+        <Metric
           title="Billing"
           value={health?.billing?.status ?? 'disabled'}
           tone={statusTone(health?.billing?.status)}
@@ -639,6 +644,9 @@ function Dashboard({
       </section>
       <section className="content-grid">
         <NodeLoad nodes={view.nodes} />
+        <SystemSummary health={health} />
+      </section>
+      <section className="content-grid">
         <ProvisionSnapshot provisions={view.provisions} />
       </section>
     </>
@@ -707,6 +715,45 @@ function ProvisionSnapshot({ provisions }: { provisions: Provision[] }) {
           </span>
         ))}
       </div>
+    </section>
+  );
+}
+
+function SystemSummary({ health }: { health?: HealthData }) {
+  const runtime = health?.runtime;
+
+  return (
+    <section className="panel">
+      <h2>System</h2>
+      {!runtime ? <p>No runtime settings available.</p> : null}
+      {runtime ? (
+        <dl className="detail-list">
+          <dt>Mode</dt>
+          <dd>{runtime.mode}</dd>
+          <dt>Node env</dt>
+          <dd>{runtime.nodeEnv}</dd>
+          <dt>Billing provider</dt>
+          <dd>{runtime.billingProvider}</dd>
+          <dt>VPN provider</dt>
+          <dd>{runtime.vpnProvider}</dd>
+          <dt>Health checks</dt>
+          <dd>
+            {runtime.nodeHealthChecks.enabled
+              ? `enabled, ${humanizeCron(runtime.nodeHealthChecks.cron)}`
+              : 'disabled'}
+          </dd>
+          <dt>Cleanup</dt>
+          <dd>
+            {runtime.cleanup.enabled
+              ? `enabled, ${humanizeCron(runtime.cleanup.cron)}, limit ${runtime.cleanup.limit}`
+              : 'disabled'}
+          </dd>
+          <dt>Webhook limit</dt>
+          <dd>{formatRateLimit(runtime.rateLimits.webhook)}</dd>
+          <dt>Admin API limit</dt>
+          <dd>{formatRateLimit(runtime.rateLimits.adminApi)}</dd>
+        </dl>
+      ) : null}
     </section>
   );
 }
@@ -2095,6 +2142,37 @@ function uniqueValues(values: string[]) {
   return Array.from(new Set(values)).sort((left, right) =>
     left.localeCompare(right),
   );
+}
+
+function formatRateLimit(limit: {
+  enabled: boolean;
+  max: number;
+  windowMs: number;
+}) {
+  if (!limit.enabled) {
+    return 'disabled';
+  }
+
+  const seconds = Math.max(1, Math.round(limit.windowMs / 1000));
+  if (seconds % 60 === 0) {
+    const minutes = Math.round(seconds / 60);
+    return `${limit.max}/${minutes} min`;
+  }
+
+  return `${limit.max}/${seconds}s`;
+}
+
+function humanizeCron(cron: string): string {
+  switch (cron.trim()) {
+    case '*/5 * * * *':
+      return 'every 5 min';
+    case '*/15 * * * *':
+      return 'every 15 min';
+    case '0 * * * *':
+      return 'every hour';
+    default:
+      return `cron ${cron}`;
+  }
 }
 
 function paginate<T>(items: T[], page: number, pageSize: number) {

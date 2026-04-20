@@ -102,6 +102,34 @@ function createRequestId(): string {
 
 export interface HealthData {
   status: string;
+  testMode?: boolean;
+  runtime?: {
+    mode: string;
+    nodeEnv: string;
+    billingProvider: string;
+    vpnProvider: string;
+    nodeHealthChecks: {
+      enabled: boolean;
+      cron: string;
+    };
+    cleanup: {
+      enabled: boolean;
+      cron: string;
+      limit: number;
+    };
+    rateLimits: {
+      webhook: {
+        enabled: boolean;
+        windowMs: number;
+        max: number;
+      };
+      adminApi: {
+        enabled: boolean;
+        windowMs: number;
+        max: number;
+      };
+    };
+  };
   db: string;
   redis: string;
   queue: {

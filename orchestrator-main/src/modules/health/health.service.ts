@@ -35,6 +35,62 @@ export class HealthService {
       testMode:
         (this.configService.get<string>('TEST_MODE') ?? 'false').toLowerCase() ===
         'true',
+      runtime: {
+        mode:
+          (this.configService.get<string>('TEST_MODE') ?? 'false').toLowerCase() ===
+          'true'
+            ? 'test'
+            : 'production',
+        nodeEnv: this.configService.get<string>('NODE_ENV') ?? 'development',
+        billingProvider:
+          this.configService.get<string>('BILLING_PROVIDER') ?? 'noop',
+        vpnProvider: this.configService.get<string>('VPN_PROVIDER') ?? 'noop',
+        nodeHealthChecks: {
+          enabled:
+            (this.configService.get<string>('NODE_HEALTH_CHECK_ENABLED') ?? 'true').toLowerCase() ===
+            'true',
+          cron:
+            this.configService.get<string>('NODE_HEALTH_CHECK_CRON') ??
+            '*/5 * * * *',
+        },
+        cleanup: {
+          enabled:
+            (this.configService.get<string>('PROVISION_CLEANUP_ENABLED') ?? 'true').toLowerCase() ===
+            'true',
+          cron:
+            this.configService.get<string>('PROVISION_CLEANUP_CRON') ??
+            '*/15 * * * *',
+          limit: Number(
+            this.configService.get<string>('PROVISION_CLEANUP_LIMIT') ?? '50',
+          ),
+        },
+        rateLimits: {
+          webhook: {
+            enabled:
+              (this.configService.get<string>('WEBHOOK_RATE_LIMIT_ENABLED') ?? 'true').toLowerCase() ===
+              'true',
+            windowMs: Number(
+              this.configService.get<string>('WEBHOOK_RATE_LIMIT_WINDOW_MS') ??
+                '60000',
+            ),
+            max: Number(
+              this.configService.get<string>('WEBHOOK_RATE_LIMIT_MAX') ?? '60',
+            ),
+          },
+          adminApi: {
+            enabled:
+              (this.configService.get<string>('ADMIN_RATE_LIMIT_ENABLED') ?? 'true').toLowerCase() ===
+              'true',
+            windowMs: Number(
+              this.configService.get<string>('ADMIN_RATE_LIMIT_WINDOW_MS') ??
+                '60000',
+            ),
+            max: Number(
+              this.configService.get<string>('ADMIN_RATE_LIMIT_MAX') ?? '300',
+            ),
+          },
+        },
+      },
       db,
       redis,
       queue,
