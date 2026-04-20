@@ -36,6 +36,12 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   setDefault(normalized, 'DB_MIGRATIONS_RUN', 'true');
   setDefault(normalized, 'REDIS_PORT', '6379');
   setDefault(normalized, 'WEBHOOK_SIGNATURE_TOLERANCE_SECONDS', '300');
+  setDefault(normalized, 'WEBHOOK_RATE_LIMIT_ENABLED', 'true');
+  setDefault(normalized, 'WEBHOOK_RATE_LIMIT_WINDOW_MS', '60000');
+  setDefault(normalized, 'WEBHOOK_RATE_LIMIT_MAX', '60');
+  setDefault(normalized, 'ADMIN_RATE_LIMIT_ENABLED', 'true');
+  setDefault(normalized, 'ADMIN_RATE_LIMIT_WINDOW_MS', '60000');
+  setDefault(normalized, 'ADMIN_RATE_LIMIT_MAX', '300');
   setDefault(normalized, 'PROVISION_CLEANUP_ENABLED', 'true');
   setDefault(normalized, 'PROVISION_CLEANUP_CRON', '*/15 * * * *');
   setDefault(normalized, 'PROVISION_CLEANUP_LIMIT', '50');
@@ -63,6 +69,14 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   validateInteger(normalized, 'WEBHOOK_SIGNATURE_TOLERANCE_SECONDS', errors, {
     min: 1,
   });
+  validateInteger(normalized, 'WEBHOOK_RATE_LIMIT_WINDOW_MS', errors, {
+    min: 1000,
+  });
+  validateInteger(normalized, 'WEBHOOK_RATE_LIMIT_MAX', errors, { min: 1 });
+  validateInteger(normalized, 'ADMIN_RATE_LIMIT_WINDOW_MS', errors, {
+    min: 1000,
+  });
+  validateInteger(normalized, 'ADMIN_RATE_LIMIT_MAX', errors, { min: 1 });
   validateInteger(normalized, 'PROVISION_CLEANUP_LIMIT', errors, { min: 1 });
   validateInteger(normalized, 'VPN_TIMEOUT', errors, { min: 1 });
   validateInteger(normalized, 'VPN_3XUI_CLIENT_TOTAL_GB', errors, { min: 0 });
@@ -73,6 +87,8 @@ export function validateEnv(config: EnvConfig): EnvConfig {
 
   validateBoolean(normalized, 'DB_SYNCHRONIZE', errors);
   validateBoolean(normalized, 'DB_MIGRATIONS_RUN', errors);
+  validateBoolean(normalized, 'WEBHOOK_RATE_LIMIT_ENABLED', errors);
+  validateBoolean(normalized, 'ADMIN_RATE_LIMIT_ENABLED', errors);
   validateBoolean(normalized, 'PROVISION_CLEANUP_ENABLED', errors);
   validateBoolean(normalized, 'NODE_HEALTH_CHECK_ENABLED', errors);
   validateBoolean(normalized, 'VPN_3XUI_TLS_REJECT_UNAUTHORIZED', errors);
