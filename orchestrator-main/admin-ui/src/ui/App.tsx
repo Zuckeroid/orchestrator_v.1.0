@@ -119,7 +119,8 @@ const emptyNodeForm: VpnNodeFormState = {
   capacity: '100',
 };
 
-const TABLE_PAGE_SIZE = 10;
+const PROVISIONS_PAGE_SIZE = 10;
+const EVENTS_PAGE_SIZE = 15;
 
 const DEFAULT_API_SETTINGS = {
   apiBaseUrl: '/api/v1',
@@ -1182,101 +1183,233 @@ function ProvisionsPanel({
 }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
+  const [selectedProvisionId, setSelectedProvisionId] = useState<string | null>(null);
+  const [selectedProvision, setSelectedProvision] = useState<Provision | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
+  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
   const filtered = provisions.filter((provision) =>
     statusFilter === 'all' ? true : provision.status === statusFilter,
   );
   const statuses = uniqueValues(provisions.map((item) => item.status));
-  const totalPages = Math.max(Math.ceil(filtered.length / TABLE_PAGE_SIZE), 1);
+  const totalPages = Math.max(Math.ceil(filtered.length / PROVISIONS_PAGE_SIZE), 1);
   const currentPage = Math.min(page, totalPages);
-  const paged = paginate(filtered, currentPage, TABLE_PAGE_SIZE);
+  const paged = paginate(filtered, currentPage, PROVISIONS_PAGE_SIZE);
 
   useEffect(() => {
     setPage(1);
   }, [statusFilter]);
 
+  useEffect(() => {
+    if (paged.length === 0) {
+      setSelectedProvisionId(null);
+      setSelectedProvision(null);
+      setDetailsError('');
+      return;
+    }
+
+    const existing = paged.find((provision) => provision.id === selectedProvisionId);
+    if (!existing) {
+      setSelectedProvisionId(paged[0].id);
+    }
+  }, [paged, selectedProvisionId]);
+
+  useEffect(() => {
+    if (!selectedProvisionId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadDetails() {
+      setDetailsLoading(true);
+      setDetailsError('');
+      try {
+        const details = await api.get<Provision>(`/provisions/${selectedProvisionId}`);
+        if (!cancelled) {
+          setSelectedProvision(details);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setSelectedProvision(null);
+          setDetailsError(caught instanceof Error ? caught.message : String(caught));
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailsLoading(false);
+        }
+      }
+    }
+
+    void loadDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, selectedProvisionId]);
+
   return (
-    <section className="panel table-panel">
-      <div className="panel-heading">
-        <h2>Provisions</h2>
-        <label className="inline-filter">
-          Status
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="all">All</option>
-            {statuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Subscription</th>
-              <th>Status</th>
-              <th>Storage</th>
-              <th>VPN Login</th>
-              <th>Days left</th>
-              <th>Delete after</th>
-              <th>Link</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paged.map((provision) => (
-              <tr key={provision.id}>
-                <td>{provision.email}</td>
-                <td>{provision.externalSubscriptionId}</td>
-                <td>
-                  <span className={`status-pill ${statusTone(provision.status)}`}>
-                    {provision.status}
-                  </span>
-                </td>
-                <td>{provision.storageStatus}</td>
-                <td>{provision.vpnLogin ?? 'none'}</td>
-                <td>{formatDaysLeft(provision.serviceExpiresAt)}</td>
-                <td>{formatDate(provision.deleteAfter)}</td>
-                <td>
-                  {provision.subscriptionLink ? (
+    <>
+      <section className="panel table-panel">
+        <div className="panel-heading">
+          <h2>Provisions</h2>
+          <label className="inline-filter">
+            Status
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="all">All</option>
+              {statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Subscription</th>
+                <th>Status</th>
+                <th>Storage</th>
+                <th>VPN Login</th>
+                <th>Days left</th>
+                <th>Delete after</th>
+                <th>Link</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paged.map((provision) => (
+                <tr
+                  key={provision.id}
+                  className={
+                    provision.id === selectedProvisionId ? 'event-row active' : 'event-row'
+                  }
+                  onClick={() => setSelectedProvisionId(provision.id)}
+                >
+                  <td>{provision.email}</td>
+                  <td>{provision.externalSubscriptionId}</td>
+                  <td>
+                    <span className={`status-pill ${statusTone(provision.status)}`}>
+                      {provision.status}
+                    </span>
+                  </td>
+                  <td>{provision.storageStatus}</td>
+                  <td>{provision.vpnLogin ?? 'none'}</td>
+                  <td>{formatDaysLeft(provision.serviceExpiresAt)}</td>
+                  <td>{formatDate(provision.deleteAfter)}</td>
+                  <td>
+                    {provision.subscriptionLink ? (
+                      <a
+                        href={provision.subscriptionLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        Open
+                      </a>
+                    ) : (
+                      'none'
+                    )}
+                  </td>
+                  <td>
+                    <button
+                      disabled={provision.status === 'deleted'}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteNow(provision.id);
+                      }}
+                      type="button"
+                    >
+                      Delete now
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <PaginationControls
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={filtered.length}
+          pageSize={PROVISIONS_PAGE_SIZE}
+          onPageChange={setPage}
+        />
+      </section>
+      <section className="panel">
+        <div className="panel-heading">
+          <h2>Provision Details</h2>
+          {selectedProvision ? (
+            <span className={`status-pill ${statusTone(selectedProvision.status)}`}>
+              {selectedProvision.status}
+            </span>
+          ) : null}
+        </div>
+        {detailsLoading ? <p>Loading provision details...</p> : null}
+        {detailsError ? <div className="error-line">{detailsError}</div> : null}
+        {!detailsLoading && !detailsError && !selectedProvision ? (
+          <p className="muted">Select a provision to inspect details.</p>
+        ) : null}
+        {!detailsLoading && !detailsError && selectedProvision ? (
+          <div className="detail-grid">
+            <div className="detail-block">
+              <h3>Meta</h3>
+              <dl className="detail-list">
+                <dt>User</dt>
+                <dd>{selectedProvision.email}</dd>
+                <dt>User ID</dt>
+                <dd>{selectedProvision.externalUserId}</dd>
+                <dt>Subscription</dt>
+                <dd>{selectedProvision.externalSubscriptionId}</dd>
+                <dt>VPN node</dt>
+                <dd>{selectedProvision.vpnNodeId ?? 'none'}</dd>
+                <dt>VPN login</dt>
+                <dd>{selectedProvision.vpnLogin ?? 'none'}</dd>
+                <dt>Storage</dt>
+                <dd>{selectedProvision.storageStatus}</dd>
+                <dt>Days left</dt>
+                <dd>{formatDaysLeft(selectedProvision.serviceExpiresAt)}</dd>
+                <dt>Delete after</dt>
+                <dd>{formatDate(selectedProvision.deleteAfter)}</dd>
+                <dt>Created</dt>
+                <dd>{formatDate(selectedProvision.createdAt)}</dd>
+                <dt>Updated</dt>
+                <dd>{formatDate(selectedProvision.updatedAt)}</dd>
+              </dl>
+            </div>
+            <div className="detail-block">
+              <h3>Actions & Links</h3>
+              <dl className="detail-list">
+                <dt>Subscription URL</dt>
+                <dd>
+                  {selectedProvision.subscriptionLink ? (
                     <a
-                      href={provision.subscriptionLink}
+                      href={selectedProvision.subscriptionLink}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Open
+                      {selectedProvision.subscriptionLink}
                     </a>
                   ) : (
                     'none'
                   )}
-                </td>
-                <td>
-                  <button
-                    disabled={provision.status === 'deleted'}
-                    onClick={() => onDeleteNow(provision.id)}
-                    type="button"
-                  >
-                    Delete now
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <PaginationControls
-        page={currentPage}
-        totalPages={totalPages}
-        totalItems={filtered.length}
-        pageSize={TABLE_PAGE_SIZE}
-        onPageChange={setPage}
-      />
-    </section>
+                </dd>
+                <dt>Error</dt>
+                <dd>{selectedProvision.error ?? 'none'}</dd>
+                <dt>Deleted at</dt>
+                <dd>{formatDate(selectedProvision.deletedAt)}</dd>
+              </dl>
+            </div>
+          </div>
+        ) : null}
+      </section>
+    </>
   );
 }
 
@@ -1480,9 +1613,9 @@ function EventsPanel({
     statusFilter === 'all' ? true : event.status === statusFilter,
   );
   const statuses = uniqueValues(events.map((item) => item.status));
-  const totalPages = Math.max(Math.ceil(filtered.length / TABLE_PAGE_SIZE), 1);
+  const totalPages = Math.max(Math.ceil(filtered.length / EVENTS_PAGE_SIZE), 1);
   const currentPage = Math.min(page, totalPages);
-  const paged = paginate(filtered, currentPage, TABLE_PAGE_SIZE);
+  const paged = paginate(filtered, currentPage, EVENTS_PAGE_SIZE);
   const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
 
   useEffect(() => {
@@ -1541,16 +1674,65 @@ function EventsPanel({
 
   return (
     <>
-      <section className="content-grid">
-      <DataTable
-        title="Queue"
-        headers={['State', 'Count']}
-        rows={
-          queue
-            ? Object.entries(queue.counts).map(([state, count]) => [state, count])
-            : []
-        }
-      />
+      <section className="events-layout">
+        <div className="events-sidebar">
+          <DataTable
+            title="Queue"
+            className="queue-panel"
+            headers={['State', 'Count']}
+            rows={
+              queue
+                ? Object.entries(queue.counts).map(([state, count]) => [state, count])
+                : []
+            }
+          />
+          <section className="panel event-details-panel">
+            <div className="panel-heading">
+              <h2>Event Details</h2>
+              {selectedEvent ? (
+                <span className={`status-pill ${statusTone(selectedEvent.status)}`}>
+                  {selectedEvent.status}
+                </span>
+              ) : null}
+            </div>
+            {detailsLoading ? <p>Loading event details...</p> : null}
+            {detailsError ? <div className="error-line">{detailsError}</div> : null}
+            {!detailsLoading && !detailsError && !selectedEvent ? (
+              <p className="muted">Select an event to inspect payload and errors.</p>
+            ) : null}
+            {!detailsLoading && !detailsError && selectedEvent ? (
+              <div className="detail-block">
+                <h3>Meta</h3>
+                <dl className="detail-list">
+                  <dt>Event ID</dt>
+                  <dd>{selectedEvent.eventId}</dd>
+                  <dt>Type</dt>
+                  <dd>{selectedEvent.eventType}</dd>
+                  <dt>User</dt>
+                  <dd>{selectedEvent.externalUserId ?? 'none'}</dd>
+                  <dt>Subscription</dt>
+                  <dd>{selectedEvent.externalSubscriptionId ?? 'none'}</dd>
+                  <dt>Order</dt>
+                  <dd>{selectedEvent.externalOrderId ?? 'none'}</dd>
+                  <dt>Payment</dt>
+                  <dd>{selectedEvent.externalPaymentId ?? 'none'}</dd>
+                  <dt>Plan</dt>
+                  <dd>{selectedEvent.externalPlanId ?? 'none'}</dd>
+                  <dt>Received</dt>
+                  <dd>{formatDate(selectedEvent.receivedAt)}</dd>
+                  <dt>Processed</dt>
+                  <dd>{formatDate(selectedEvent.processedAt)}</dd>
+                </dl>
+                <h3>Error</h3>
+                <pre className="json-block">{selectedEvent.error ?? 'none'}</pre>
+                <h3>Payload</h3>
+                <pre className="json-block">
+                  {formatJson(selectedEvent.payload ?? {})}
+                </pre>
+              </div>
+            ) : null}
+          </section>
+        </div>
         <section className="panel table-panel">
           <div className="panel-heading">
             <h2>Processed Events</h2>
@@ -1605,60 +1787,10 @@ function EventsPanel({
             page={currentPage}
             totalPages={totalPages}
             totalItems={filtered.length}
-            pageSize={TABLE_PAGE_SIZE}
+            pageSize={EVENTS_PAGE_SIZE}
             onPageChange={setPage}
           />
         </section>
-      </section>
-      <section className="panel">
-        <div className="panel-heading">
-          <h2>Event Details</h2>
-          {selectedEvent ? (
-            <span className={`status-pill ${statusTone(selectedEvent.status)}`}>
-              {selectedEvent.status}
-            </span>
-          ) : null}
-        </div>
-        {detailsLoading ? <p>Loading event details...</p> : null}
-        {detailsError ? <div className="error-line">{detailsError}</div> : null}
-        {!detailsLoading && !detailsError && !selectedEvent ? (
-          <p className="muted">Select an event to inspect payload and errors.</p>
-        ) : null}
-        {!detailsLoading && !detailsError && selectedEvent ? (
-          <div className="detail-grid">
-            <div className="detail-block">
-              <h3>Meta</h3>
-              <dl className="detail-list">
-                <dt>Event ID</dt>
-                <dd>{selectedEvent.eventId}</dd>
-                <dt>Type</dt>
-                <dd>{selectedEvent.eventType}</dd>
-                <dt>User</dt>
-                <dd>{selectedEvent.externalUserId ?? 'none'}</dd>
-                <dt>Subscription</dt>
-                <dd>{selectedEvent.externalSubscriptionId ?? 'none'}</dd>
-                <dt>Order</dt>
-                <dd>{selectedEvent.externalOrderId ?? 'none'}</dd>
-                <dt>Payment</dt>
-                <dd>{selectedEvent.externalPaymentId ?? 'none'}</dd>
-                <dt>Plan</dt>
-                <dd>{selectedEvent.externalPlanId ?? 'none'}</dd>
-                <dt>Received</dt>
-                <dd>{formatDate(selectedEvent.receivedAt)}</dd>
-                <dt>Processed</dt>
-                <dd>{formatDate(selectedEvent.processedAt)}</dd>
-              </dl>
-            </div>
-            <div className="detail-block">
-              <h3>Error</h3>
-              <pre className="json-block">{selectedEvent.error ?? 'none'}</pre>
-              <h3>Payload</h3>
-              <pre className="json-block">
-                {formatJson(selectedEvent.payload ?? {})}
-              </pre>
-            </div>
-          </div>
-        ) : null}
       </section>
     </>
   );
@@ -1683,16 +1815,18 @@ function AuditPanel({ auditLogs }: { auditLogs: AuditLog[] }) {
 function DataTable({
   title,
   actions,
+  className,
   headers,
   rows,
 }: {
   title: string;
   actions?: ReactNode;
+  className?: string;
   headers: string[];
   rows: ReactNode[][];
 }) {
   return (
-    <section className="panel table-panel">
+    <section className={`panel table-panel ${className ?? ''}`.trim()}>
       <div className="panel-heading">
         <h2>{title}</h2>
         {actions}

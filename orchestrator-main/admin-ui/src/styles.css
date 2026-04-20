@@ -304,6 +304,19 @@ input[type="checkbox"] {
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
 }
 
+.events-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.events-sidebar {
+  display: grid;
+  gap: 18px;
+  align-self: start;
+}
+
 .panel {
   border: 1px solid #d8dee8;
   border-radius: 8px;
@@ -368,6 +381,11 @@ input[type="checkbox"] {
 
 .table-panel {
   min-width: 0;
+}
+
+.queue-panel,
+.event-details-panel {
+  align-self: start;
 }
 
 .table-wrap {
@@ -612,7 +630,8 @@ td {
 
   .topbar,
   .content-grid,
-  .split-layout {
+  .split-layout,
+  .events-layout {
     grid-template-columns: 1fr;
   }
 
