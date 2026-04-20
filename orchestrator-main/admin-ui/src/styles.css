@@ -409,6 +409,10 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 
+.detail-actions {
+  margin-top: 4px;
+}
+
 .nodes-table {
   table-layout: fixed;
 }

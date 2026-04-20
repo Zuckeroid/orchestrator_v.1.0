@@ -1440,6 +1440,25 @@ function ProvisionsPanel({
                   <dt>Deleted at</dt>
                   <dd>{formatDate(selectedProvision.deletedAt)}</dd>
                 </dl>
+                <div className="row-actions detail-actions">
+                  {selectedProvision.subscriptionLink ? (
+                    <button
+                      onClick={() =>
+                        window.open(selectedProvision.subscriptionLink!, '_blank', 'noopener,noreferrer')
+                      }
+                      type="button"
+                    >
+                      Open subscription
+                    </button>
+                  ) : null}
+                  <button
+                    disabled={selectedProvision.status === 'deleted'}
+                    onClick={() => onDeleteNow(selectedProvision.id)}
+                    type="button"
+                  >
+                    Delete now
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}
@@ -1468,9 +1487,8 @@ function ProvisionsPanel({
                 <tr>
                   <th>User</th>
                   <th>Subscription</th>
-                  <th>Status</th>
                   <th>Storage</th>
-                  <th>Action</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -1484,23 +1502,11 @@ function ProvisionsPanel({
                   >
                     <td>{provision.email}</td>
                     <td>{provision.externalSubscriptionId}</td>
+                    <td>{provision.storageStatus}</td>
                     <td>
                       <span className={`status-pill ${statusTone(provision.status)}`}>
                         {provision.status}
                       </span>
-                    </td>
-                    <td>{provision.storageStatus}</td>
-                    <td>
-                      <button
-                        disabled={provision.status === 'deleted'}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onDeleteNow(provision.id);
-                        }}
-                        type="button"
-                      >
-                        Delete now
-                      </button>
                     </td>
                   </tr>
                 ))}
