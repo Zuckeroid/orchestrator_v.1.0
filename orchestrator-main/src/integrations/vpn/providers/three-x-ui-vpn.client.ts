@@ -355,8 +355,8 @@ export class ThreeXuiVpnClient implements VpnClient {
   }
 
   private buildClientEmail(input: CreateVpnClientInput): string {
-    const raw = input.email || input.externalSubscriptionId;
-    const safe = raw.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 64);
+    const raw = (input.email || input.externalSubscriptionId).trim();
+    const safe = raw.replace(/[^a-zA-Z0-9@._+-]/g, '_').slice(0, 64);
 
     return safe || uuid();
   }
