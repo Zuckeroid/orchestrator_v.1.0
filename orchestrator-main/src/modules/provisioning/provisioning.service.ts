@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { BillingEventPayload } from '../../common/types/billing-event.type';
 import { ProvisionEntity } from '../../database/entities/provision.entity';
 import { StorageBackendEntity } from '../../database/entities/storage-backend.entity';
@@ -29,6 +30,7 @@ export class ProvisioningService {
   private readonly logger = new Logger(ProvisioningService.name);
 
   constructor(
+    private readonly configService: ConfigService,
     @Inject(BILLING_PROVIDER)
     private readonly billingProvider: BillingProvider,
     @Inject(VPN_CLIENT)
@@ -129,10 +131,14 @@ export class ProvisioningService {
       if (plan.vpnEnabled) {
         const vpnNode = provision.vpnNodeId
           ? await this.vpnNodesService.findById(provision.vpnNodeId)
-          : await this.vpnNodesService.selectLeastLoaded();
+          : this.isTestModeEnabled()
+            ? undefined
+            : await this.vpnNodesService.selectLeastLoaded();
         newVpnNode = provision.vpnNodeId ? undefined : vpnNode;
 
-        const nodeConfig = this.toVpnNodeConfig(vpnNode);
+        const nodeConfig = vpnNode
+          ? this.toVpnNodeConfig(vpnNode)
+          : this.getTestModeVpnNodeConfig();
         if (provision.vpnLogin && provision.subscriptionLink) {
           await this.vpnClient.updateClient(nodeConfig, provision.vpnLogin, {
             email: event.email,
@@ -172,12 +178,16 @@ export class ProvisioningService {
           ? await this.storageBackendsService.findById(
               provision.storageBackendId,
             )
-          : await this.storageBackendsService.selectLeastLoaded();
+          : this.isTestModeEnabled()
+            ? undefined
+            : await this.storageBackendsService.selectLeastLoaded();
         newStorageBackend = provision.storageBackendId
           ? undefined
           : storageBackend;
 
-        const backendConfig = this.toStorageBackendConfig(storageBackend);
+        const backendConfig = storageBackend
+          ? this.toStorageBackendConfig(storageBackend)
+          : this.getTestModeStorageBackendConfig();
         if (provision.storageBucket) {
           await this.storageProvider.updateQuota(
             backendConfig,
@@ -305,6 +315,17 @@ export class ProvisioningService {
           enable: false,
         },
       );
+    } else if (this.isTestModeEnabled() && provision.vpnLogin) {
+      await this.vpnClient.updateClient(
+        this.getTestModeVpnNodeConfig(),
+        provision.vpnLogin,
+        {
+          email: provision.email,
+          externalSubscriptionId: provision.externalSubscriptionId,
+          limitIp: 0,
+          enable: false,
+        },
+      );
     }
 
     if (shouldReleaseCapacity && provision.vpnNodeId) {
@@ -341,6 +362,11 @@ export class ProvisioningService {
         this.toVpnNodeConfig(vpnNode),
         provision.vpnLogin,
       );
+    } else if (this.isTestModeEnabled() && provision.vpnLogin) {
+      await this.vpnClient.deleteClient(
+        this.getTestModeVpnNodeConfig(),
+        provision.vpnLogin,
+      );
     }
 
     if (provision.storageBackendId && provision.storageBucket) {
@@ -349,6 +375,11 @@ export class ProvisioningService {
       );
       await this.storageProvider.deleteBucketAccess(
         this.toStorageBackendConfig(storageBackend),
+        provision.storageBucket,
+      );
+    } else if (this.isTestModeEnabled() && provision.storageBucket) {
+      await this.storageProvider.deleteBucketAccess(
+        this.getTestModeStorageBackendConfig(),
         provision.storageBucket,
       );
     }
@@ -405,6 +436,21 @@ export class ProvisioningService {
           enable: plan.vpnEnabled,
         },
       );
+    } else if (this.isTestModeEnabled() && provision.vpnLogin) {
+      await this.vpnClient.updateClient(
+        this.getTestModeVpnNodeConfig(),
+        provision.vpnLogin,
+        {
+          email: event.email || provision.email,
+          externalSubscriptionId: event.externalSubscriptionId,
+          limitIp: plan.maxDevices,
+          expiresAt:
+            this.parseServiceExpiresAt(event) ??
+            provision.serviceExpiresAt ??
+            undefined,
+          enable: plan.vpnEnabled,
+        },
+      );
     }
 
     if (plan.storageEnabled && provision.storageBackendId && provision.storageBucket) {
@@ -413,6 +459,12 @@ export class ProvisioningService {
       );
       await this.storageProvider.updateQuota(
         this.toStorageBackendConfig(storageBackend),
+        provision.storageBucket,
+        plan.storageSizeBytes,
+      );
+    } else if (plan.storageEnabled && this.isTestModeEnabled() && provision.storageBucket) {
+      await this.storageProvider.updateQuota(
+        this.getTestModeStorageBackendConfig(),
         provision.storageBucket,
         plan.storageSizeBytes,
       );
@@ -469,6 +521,41 @@ export class ProvisioningService {
 
   private buildBucketName(externalSubscriptionId: string): string {
     return `sub-${externalSubscriptionId}`.toLowerCase();
+  }
+
+  private isTestModeEnabled(): boolean {
+    return (
+      (this.configService.get<string>('TEST_MODE') ?? 'false').toLowerCase() ===
+      'true'
+    );
+  }
+
+  private getTestModeVpnNodeConfig(): VpnNodeConfig {
+    return {
+      id: 'test-mode-vpn-node',
+      host:
+        this.configService.get<string>('TEST_MODE_VPN_HOST') ??
+        'https://mock-vpn.local',
+      apiKey: 'test-mode',
+      apiVersion: 'noop',
+      inboundId: 1,
+      subscriptionBaseUrl:
+        this.configService.get<string>('TEST_MODE_VPN_SUBSCRIPTION_BASE_URL') ??
+        'https://mock-vpn.local/sub/mock',
+    };
+  }
+
+  private getTestModeStorageBackendConfig(): StorageBackendConfig {
+    return {
+      id: 'test-mode-storage-backend',
+      endpoint:
+        this.configService.get<string>('TEST_MODE_STORAGE_ENDPOINT') ??
+        'https://mock-s3.local',
+      accessKey: 'test-mode',
+      secretKey: 'test-mode',
+      provider: 'minio',
+      region: 'us-east-1',
+    };
   }
 
   private assertNever(value: never): never {

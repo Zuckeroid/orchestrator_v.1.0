@@ -32,6 +32,9 @@ export class HealthService {
 
     return {
       status: ok ? 'ok' : 'degraded',
+      testMode:
+        (this.configService.get<string>('TEST_MODE') ?? 'false').toLowerCase() ===
+        'true',
       db,
       redis,
       queue,

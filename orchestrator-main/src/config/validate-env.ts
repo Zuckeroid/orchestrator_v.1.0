@@ -29,6 +29,7 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   };
 
   setDefault(normalized, 'NODE_ENV', 'development');
+  setDefault(normalized, 'TEST_MODE', 'false');
   setDefault(normalized, 'PORT', '3000');
   setDefault(normalized, 'ADMIN_UI_ORIGIN', 'http://localhost:5173');
   setDefault(normalized, 'DB_PORT', '5432');
@@ -57,6 +58,13 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   setDefault(normalized, 'VPN_3XUI_CLIENT_FLOW', 'xtls-rprx-vision');
   setDefault(normalized, 'VPN_3XUI_CLIENT_TOTAL_GB', '0');
   setDefault(normalized, 'VPN_3XUI_CLIENT_EXPIRY_TIME', '0');
+  setDefault(normalized, 'TEST_MODE_VPN_HOST', 'https://mock-vpn.local');
+  setDefault(
+    normalized,
+    'TEST_MODE_VPN_SUBSCRIPTION_BASE_URL',
+    'https://mock-vpn.local/sub/mock',
+  );
+  setDefault(normalized, 'TEST_MODE_STORAGE_ENDPOINT', 'https://mock-s3.local');
   setDefault(normalized, 'STORAGE_TIMEOUT', '5000');
 
   for (const key of REQUIRED_STRING_KEYS) {
@@ -87,6 +95,7 @@ export function validateEnv(config: EnvConfig): EnvConfig {
 
   validateBoolean(normalized, 'DB_SYNCHRONIZE', errors);
   validateBoolean(normalized, 'DB_MIGRATIONS_RUN', errors);
+  validateBoolean(normalized, 'TEST_MODE', errors);
   validateBoolean(normalized, 'WEBHOOK_RATE_LIMIT_ENABLED', errors);
   validateBoolean(normalized, 'ADMIN_RATE_LIMIT_ENABLED', errors);
   validateBoolean(normalized, 'PROVISION_CLEANUP_ENABLED', errors);
@@ -99,6 +108,7 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   validateOrigins(normalized, 'ADMIN_UI_ORIGIN', errors);
   validateCron(normalized, 'PROVISION_CLEANUP_CRON', errors);
   validateCron(normalized, 'NODE_HEALTH_CHECK_CRON', errors);
+  validateTestModeCompatibility(normalized, errors);
   validateProductionSafety(normalized, errors);
 
   if (errors.length > 0) {
@@ -208,6 +218,19 @@ function validateCron(config: EnvConfig, key: string, errors: string[]): void {
   }
 }
 
+function validateTestModeCompatibility(
+  config: EnvConfig,
+  errors: string[],
+): void {
+  if (config.TEST_MODE !== 'true') {
+    return;
+  }
+
+  if (config.VPN_PROVIDER !== 'noop') {
+    errors.push('TEST_MODE requires VPN_PROVIDER=noop');
+  }
+}
+
 function validateProductionSafety(config: EnvConfig, errors: string[]): void {
   if (config.NODE_ENV !== 'production') {
     return;
@@ -215,6 +238,10 @@ function validateProductionSafety(config: EnvConfig, errors: string[]): void {
 
   if (config.DB_SYNCHRONIZE === 'true') {
     errors.push('DB_SYNCHRONIZE must be false in production');
+  }
+
+  if (config.TEST_MODE === 'true') {
+    errors.push('TEST_MODE must be false in production');
   }
 
   for (const [key, dangerousValues] of DANGEROUS_PRODUCTION_DEFAULTS) {
