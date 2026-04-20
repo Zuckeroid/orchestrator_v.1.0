@@ -108,6 +108,12 @@ export interface HealthData {
     status: string;
     counts: QueueCounts;
   };
+  billing?: {
+    status: string;
+    provider: string;
+    url?: string;
+    latencyMs?: number;
+  };
 }
 
 export interface QueueCounts {

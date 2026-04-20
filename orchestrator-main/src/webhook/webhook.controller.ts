@@ -15,6 +15,15 @@ export class WebhookController {
     return this.service.handle(body, headers, request.rawBody);
   }
 
+  @Post('billing/preflight')
+  handlePreflight(
+    @Body() body: unknown,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+    @Req() request: { rawBody?: Buffer },
+  ) {
+    return this.service.handlePreflight(body, headers, request.rawBody);
+  }
+
   @Post('billing/test')
   @UseGuards(AdminApiKeyGuard)
   handleTest(@Body() body: unknown) {

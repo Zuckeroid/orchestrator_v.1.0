@@ -36,6 +36,28 @@ export class WebhookService {
     return this.enqueuePayload(payload);
   }
 
+  handlePreflight(
+    body: unknown,
+    headers: Record<string, string | string[] | undefined>,
+    rawBody?: Buffer,
+  ) {
+    this.validateApiKey(headers);
+    this.validateTimestamp(headers);
+    this.validateSignature(headers, rawBody);
+
+    return {
+      success: true,
+      data: {
+        status: 'ok',
+        acceptedAt: new Date().toISOString(),
+        probe:
+          this.isRecord(body) && typeof body.probe === 'string'
+            ? body.probe
+            : 'unknown',
+      },
+    };
+  }
+
   private async enqueuePayload(payload: BillingEventPayload) {
     const claim = await this.processedEventsService.claim(payload);
     if (claim.duplicate) {

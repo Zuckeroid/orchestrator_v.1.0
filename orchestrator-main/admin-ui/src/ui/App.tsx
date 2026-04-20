@@ -585,6 +585,11 @@ function Dashboard({
         <Metric title="API" value={health?.status ?? 'unknown'} tone="green" />
         <Metric title="Database" value={health?.db ?? 'unknown'} tone="teal" />
         <Metric title="Redis" value={health?.redis ?? 'unknown'} tone="yellow" />
+        <Metric
+          title="Billing"
+          value={health?.billing?.status ?? 'disabled'}
+          tone={statusTone(health?.billing?.status)}
+        />
         <Metric title="Nodes online" value={nodeHealth.online ?? 0} tone="green" />
         <Metric
           title="Nodes degraded"
@@ -2012,6 +2017,23 @@ function healthTone(value?: string | null): string {
       return 'red';
     default:
       return 'slate';
+  }
+}
+
+function statusTone(value?: string | null): string {
+  switch (value) {
+    case 'ok':
+    case 'online':
+    case 'active':
+      return 'green';
+    case 'error':
+    case 'offline':
+    case 'failed':
+      return 'red';
+    case 'degraded':
+      return 'yellow';
+    default:
+      return 'teal';
   }
 }
 
