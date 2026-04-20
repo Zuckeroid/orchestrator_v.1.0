@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   VpnNodeEntity,
+  VpnNodeHealthStatus,
   VpnNodeStatus,
 } from '../../database/entities/vpn-node.entity';
 import {
@@ -32,6 +33,10 @@ export interface UpdateVpnNodeInput {
   isActive?: boolean;
   status?: VpnNodeStatus;
   lastError?: string | null;
+  healthStatus?: VpnNodeHealthStatus;
+  lastHealthCheckAt?: Date | null;
+  lastSuccessfulHealthCheckAt?: Date | null;
+  failureCount?: number;
 }
 
 @Injectable()
@@ -114,6 +119,18 @@ export class VpnNodesService {
     if (input.lastError !== undefined) {
       node.lastError = input.lastError;
     }
+    if (input.healthStatus !== undefined) {
+      node.healthStatus = input.healthStatus;
+    }
+    if (input.lastHealthCheckAt !== undefined) {
+      node.lastHealthCheckAt = input.lastHealthCheckAt;
+    }
+    if (input.lastSuccessfulHealthCheckAt !== undefined) {
+      node.lastSuccessfulHealthCheckAt = input.lastSuccessfulHealthCheckAt;
+    }
+    if (input.failureCount !== undefined) {
+      node.failureCount = input.failureCount;
+    }
 
     return this.repository.save(node);
   }
@@ -127,6 +144,7 @@ export class VpnNodesService {
 
   async checkNode(nodeId: string): Promise<VpnNodeCheckResult> {
     const node = await this.findById(nodeId);
+    const checkedAt = new Date();
 
     try {
       const result = await this.vpnClient.checkNode({
@@ -138,6 +156,10 @@ export class VpnNodesService {
       });
 
       node.lastError = null;
+      node.healthStatus = 'online';
+      node.lastHealthCheckAt = checkedAt;
+      node.lastSuccessfulHealthCheckAt = checkedAt;
+      node.failureCount = 0;
       if (result.clientCount !== undefined) {
         node.currentLoad = result.clientCount;
       }
@@ -146,9 +168,54 @@ export class VpnNodesService {
       return result;
     } catch (error) {
       node.lastError = error instanceof Error ? error.message : String(error);
+      node.healthStatus = this.healthStatusFromError(error);
+      node.lastHealthCheckAt = checkedAt;
+      node.failureCount = (node.failureCount ?? 0) + 1;
       await this.repository.save(node);
       throw error;
     }
+  }
+
+  async checkAllNodes(): Promise<{
+    total: number;
+    online: number;
+    degraded: number;
+    offline: number;
+    failed: string[];
+  }> {
+    const nodes = await this.repository.find({
+      order: {
+        createdAt: 'ASC',
+      },
+    });
+
+    let online = 0;
+    let degraded = 0;
+    let offline = 0;
+    const failed: string[] = [];
+
+    for (const node of nodes) {
+      try {
+        await this.checkNode(node.id);
+        online += 1;
+      } catch (error) {
+        const fresh = await this.findById(node.id);
+        if (fresh.healthStatus === 'degraded') {
+          degraded += 1;
+        } else {
+          offline += 1;
+        }
+        failed.push(`${node.id}: ${fresh.lastError ?? 'unknown error'}`);
+      }
+    }
+
+    return {
+      total: nodes.length,
+      online,
+      degraded,
+      offline,
+      failed,
+    };
   }
 
   async selectLeastLoaded(): Promise<VpnNodeEntity> {
@@ -193,5 +260,15 @@ export class VpnNodesService {
       })
       .where('id = :nodeId', { nodeId })
       .execute();
+  }
+
+  private healthStatusFromError(error: unknown): VpnNodeHealthStatus {
+    const message = error instanceof Error ? error.message.toLowerCase() : String(error);
+
+    if (message.includes('inbound')) {
+      return 'degraded';
+    }
+
+    return 'offline';
   }
 }

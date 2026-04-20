@@ -995,9 +995,11 @@ function NodesPanel({
               <tr>
                 <th>Name</th>
                 <th>Host</th>
-                <th>Status</th>
+                <th>Role</th>
+                <th>Health</th>
                 <th>Load</th>
                 <th>Inbound</th>
+                <th>Checked</th>
                 <th>Last error</th>
                 <th>Action</th>
               </tr>
@@ -1016,9 +1018,23 @@ function NodesPanel({
                   </td>
                   <td>{node.status}</td>
                   <td>
+                    {node.healthStatus}
+                    {node.failureCount > 0 ? (
+                      <span className="cell-note">fails: {node.failureCount}</span>
+                    ) : null}
+                  </td>
+                  <td>
                     {node.currentLoad}/{node.capacity}
                   </td>
                   <td>{node.inboundId ?? 'none'}</td>
+                  <td>
+                    {formatDate(node.lastHealthCheckAt)}
+                    {node.lastSuccessfulHealthCheckAt ? (
+                      <span className="cell-note">
+                        last ok: {formatDate(node.lastSuccessfulHealthCheckAt)}
+                      </span>
+                    ) : null}
+                  </td>
                   <td>
                     {node.lastError ? (
                       <span className="error-text">{node.lastError}</span>

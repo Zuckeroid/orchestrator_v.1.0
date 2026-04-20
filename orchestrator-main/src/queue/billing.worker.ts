@@ -4,6 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ProvisioningService } from '../modules/provisioning/provisioning.service';
 import { BillingEventPayload } from '../common/types/billing-event.type';
 import { ProcessedEventsService } from '../modules/processed-events/processed-events.service';
+import { VpnNodesService } from '../modules/nodes/vpn-nodes.service';
 
 @Injectable()
 @Processor('billing-events')
@@ -13,6 +14,7 @@ export class BillingWorker {
   constructor(
     private readonly provisioningService: ProvisioningService,
     private readonly processedEventsService: ProcessedEventsService,
+    private readonly vpnNodesService: VpnNodesService,
   ) {}
 
   @Process('payment_paid')
@@ -41,6 +43,13 @@ export class BillingWorker {
     this.logger.log(`Processing due provision cleanup: limit=${limit}`);
 
     return this.provisioningService.cleanupDueProvisions(limit);
+  }
+
+  @Process('check_vpn_nodes_health')
+  async handleCheckVpnNodesHealth() {
+    this.logger.log('Processing VPN node health checks');
+
+    return this.vpnNodesService.checkAllNodes();
   }
 
   private async handleBillingEvent(job: Job<BillingEventPayload>) {

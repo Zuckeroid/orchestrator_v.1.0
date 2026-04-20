@@ -4,6 +4,7 @@ import { QueueService } from './queue.service';
 import { BillingWorker } from './billing.worker';
 import { ProvisioningModule } from '../modules/provisioning/provisioning.module';
 import { ProcessedEventsModule } from '../modules/processed-events/processed-events.module';
+import { NodesModule } from '../modules/nodes/nodes.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { ProcessedEventsModule } from '../modules/processed-events/processed-eve
     }),
     ProvisioningModule,
     ProcessedEventsModule,
+    NodesModule,
   ],
   providers: [
     QueueService,

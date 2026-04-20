@@ -39,6 +39,8 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   setDefault(normalized, 'PROVISION_CLEANUP_ENABLED', 'true');
   setDefault(normalized, 'PROVISION_CLEANUP_CRON', '*/15 * * * *');
   setDefault(normalized, 'PROVISION_CLEANUP_LIMIT', '50');
+  setDefault(normalized, 'NODE_HEALTH_CHECK_ENABLED', 'true');
+  setDefault(normalized, 'NODE_HEALTH_CHECK_CRON', '*/5 * * * *');
   setDefault(normalized, 'VPN_PROVIDER', 'noop');
   setDefault(normalized, 'VPN_TIMEOUT', '5000');
   setDefault(normalized, 'VPN_3XUI_LOGIN_PATH', 'login');
@@ -71,12 +73,14 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   validateBoolean(normalized, 'DB_SYNCHRONIZE', errors);
   validateBoolean(normalized, 'DB_MIGRATIONS_RUN', errors);
   validateBoolean(normalized, 'PROVISION_CLEANUP_ENABLED', errors);
+  validateBoolean(normalized, 'NODE_HEALTH_CHECK_ENABLED', errors);
   validateBoolean(normalized, 'VPN_3XUI_TLS_REJECT_UNAUTHORIZED', errors);
 
   validateEnum(normalized, 'NODE_ENV', ['development', 'test', 'production'], errors);
   validateEnum(normalized, 'VPN_PROVIDER', ['noop', '3x-ui', 'threexui'], errors);
   validateOrigins(normalized, 'ADMIN_UI_ORIGIN', errors);
   validateCron(normalized, 'PROVISION_CLEANUP_CRON', errors);
+  validateCron(normalized, 'NODE_HEALTH_CHECK_CRON', errors);
   validateProductionSafety(normalized, errors);
 
   if (errors.length > 0) {

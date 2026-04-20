@@ -156,7 +156,11 @@ export interface VpnNode {
   inboundId?: number | null;
   subscriptionBaseUrl?: string | null;
   status: string;
+  healthStatus: string;
   lastError?: string | null;
+  lastHealthCheckAt?: string | null;
+  lastSuccessfulHealthCheckAt?: string | null;
+  failureCount: number;
   capacity: number;
   currentLoad: number;
   isActive: boolean;

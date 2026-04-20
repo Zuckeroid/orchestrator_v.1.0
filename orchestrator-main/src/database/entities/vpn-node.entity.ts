@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 
 export type VpnNodeStatus = 'active' | 'inactive' | 'blocked' | 'draining';
+export type VpnNodeHealthStatus = 'unknown' | 'online' | 'degraded' | 'offline';
 
 @Entity('vpn_nodes')
 export class VpnNodeEntity {
@@ -41,6 +42,23 @@ export class VpnNodeEntity {
 
   @Column({ name: 'last_error', type: 'text', nullable: true })
   lastError?: string | null;
+
+  @Index()
+  @Column({ name: 'health_status', type: 'text', default: 'unknown' })
+  healthStatus!: VpnNodeHealthStatus;
+
+  @Column({ name: 'last_health_check_at', type: 'timestamp', nullable: true })
+  lastHealthCheckAt?: Date | null;
+
+  @Column({
+    name: 'last_successful_health_check_at',
+    type: 'timestamp',
+    nullable: true,
+  })
+  lastSuccessfulHealthCheckAt?: Date | null;
+
+  @Column({ name: 'failure_count', type: 'integer', default: 0 })
+  failureCount!: number;
 
   @Column({ type: 'integer' })
   capacity!: number;

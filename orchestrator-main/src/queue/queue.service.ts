@@ -11,19 +11,40 @@ export class QueueService implements OnModuleInit {
 
   async onModuleInit() {
     if (
-      (process.env.PROVISION_CLEANUP_ENABLED ?? 'true').toLowerCase() !== 'true'
+      (process.env.PROVISION_CLEANUP_ENABLED ?? 'true').toLowerCase() === 'true'
+    ) {
+      const cron = process.env.PROVISION_CLEANUP_CRON ?? '*/15 * * * *';
+      const limit = Number(process.env.PROVISION_CLEANUP_LIMIT ?? 50);
+
+      await this.queue.add(
+        'cleanup_due_provisions',
+        { limit },
+        {
+          jobId: 'cleanup-due-provisions',
+          repeat: {
+            cron,
+          },
+          removeOnComplete: false,
+          removeOnFail: false,
+        },
+      );
+
+      this.logger.log(`Provision cleanup scheduled with cron: ${cron}`);
+    }
+
+    if (
+      (process.env.NODE_HEALTH_CHECK_ENABLED ?? 'true').toLowerCase() !== 'true'
     ) {
       return;
     }
 
-    const cron = process.env.PROVISION_CLEANUP_CRON ?? '*/15 * * * *';
-    const limit = Number(process.env.PROVISION_CLEANUP_LIMIT ?? 50);
+    const cron = process.env.NODE_HEALTH_CHECK_CRON ?? '*/5 * * * *';
 
     await this.queue.add(
-      'cleanup_due_provisions',
-      { limit },
+      'check_vpn_nodes_health',
+      {},
       {
-        jobId: 'cleanup-due-provisions',
+        jobId: 'check-vpn-nodes-health',
         repeat: {
           cron,
         },
@@ -32,7 +53,7 @@ export class QueueService implements OnModuleInit {
       },
     );
 
-    this.logger.log(`Provision cleanup scheduled with cron: ${cron}`);
+    this.logger.log(`VPN node health checks scheduled with cron: ${cron}`);
   }
 
   async addBillingEventJob(data: BillingEventPayload) {
@@ -54,6 +75,18 @@ export class QueueService implements OnModuleInit {
       {
         limit: limit ?? Number(process.env.PROVISION_CLEANUP_LIMIT ?? 50),
       },
+      {
+        attempts: 1,
+        removeOnComplete: false,
+        removeOnFail: false,
+      },
+    );
+  }
+
+  async addNodeHealthCheckJob() {
+    await this.queue.add(
+      'check_vpn_nodes_health',
+      {},
       {
         attempts: 1,
         removeOnComplete: false,
