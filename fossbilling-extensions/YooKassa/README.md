@@ -48,6 +48,7 @@ The target path on the server should become:
 5. Configure the gateway.
 6. Enable one-time payments.
 7. Keep subscriptions disabled for this v1.0 gateway.
+8. Activate the local `Orchestrator` module in FOSSBilling and configure webhook/API keys there.
 
 ## Gateway Config
 
@@ -58,27 +59,16 @@ shop_id
 secret_key
 ```
 
-Required to provision services through Orchestrator:
+Provisioning settings now live in the FOSSBilling `Orchestrator` module:
 
 ```text
 orchestrator_webhook_url
 orchestrator_webhook_api_key
 orchestrator_webhook_signing_secret
+billing_api_key
 default_external_plan_id
+product_plan_map_json
 ```
-
-Optional mapping:
-
-```json
-{
-  "1": "storage_start",
-  "2": "storage_plus",
-  "3": "storage_family",
-  "order:123": "storage_custom"
-}
-```
-
-Keys without a prefix are FOSSBilling product IDs. Keys with `order:` are FOSSBilling order IDs.
 
 ## YooKassa Webhook URL
 
@@ -88,7 +78,7 @@ Configure YooKassa to send payment webhooks to the FOSSBilling gateway callback 
 https://billing.example.com/ipn.php?gateway_id=<gateway_id>
 ```
 
-FOSSBilling receives the YooKassa webhook, verifies the payment by requesting YooKassa API with `shop_id` and `secret_key`, marks the invoice paid, and then sends a signed webhook to Orchestrator.
+FOSSBilling receives the YooKassa webhook, verifies the payment by requesting YooKassa API with `shop_id` and `secret_key`, marks the invoice paid, activates or renews the order, and then the local `Orchestrator` module sends a signed lifecycle webhook to Orchestrator.
 
 ## Orchestrator Event
 

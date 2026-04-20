@@ -41,6 +41,7 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   setDefault(normalized, 'PROVISION_CLEANUP_LIMIT', '50');
   setDefault(normalized, 'NODE_HEALTH_CHECK_ENABLED', 'true');
   setDefault(normalized, 'NODE_HEALTH_CHECK_CRON', '*/5 * * * *');
+  setDefault(normalized, 'BILLING_PROVIDER', 'noop');
   setDefault(normalized, 'VPN_PROVIDER', 'noop');
   setDefault(normalized, 'VPN_TIMEOUT', '5000');
   setDefault(normalized, 'VPN_3XUI_LOGIN_PATH', 'login');
@@ -77,6 +78,7 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   validateBoolean(normalized, 'VPN_3XUI_TLS_REJECT_UNAUTHORIZED', errors);
 
   validateEnum(normalized, 'NODE_ENV', ['development', 'test', 'production'], errors);
+  validateEnum(normalized, 'BILLING_PROVIDER', ['noop', 'fossbilling'], errors);
   validateEnum(normalized, 'VPN_PROVIDER', ['noop', '3x-ui', 'threexui'], errors);
   validateOrigins(normalized, 'ADMIN_UI_ORIGIN', errors);
   validateCron(normalized, 'PROVISION_CLEANUP_CRON', errors);

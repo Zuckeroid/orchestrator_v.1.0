@@ -11,6 +11,9 @@ Boundary:
 - FOSSBilling owns clients, invoices, payments, renewals, and billing status.
 - YooKassa confirms money movement to FOSSBilling.
 - FOSSBilling sends signed lifecycle events to Orchestrator.
+- FOSSBilling accepts reverse updates from Orchestrator for:
+  - service status
+  - subscription link
 - Orchestrator provisions VPN/storage based on billing events.
 - Public product positioning is Storage-first: customers buy file storage and protected file access.
 - Public billing pages must not mention VPN, 3x-ui, inbound, nodes, proxy, or tunneling.
@@ -48,12 +51,15 @@ Install target:
 FOSSBilling gateway config:
 - shop_id
 - secret_key
+- auto_redirect
+
+FOSSBilling Orchestrator module config:
 - orchestrator_webhook_url
 - orchestrator_webhook_api_key
 - orchestrator_webhook_signing_secret
+- billing_api_key
 - default_external_plan_id
 - product_plan_map_json
-- auto_redirect
 
 Orchestrator webhook contract:
 - URL: /api/v1/webhook/billing
@@ -81,5 +87,5 @@ v1.0 limitations:
 - YooKassa recurring payments are not implemented in the gateway.
 - FOSSBilling recurring invoices are paid as one-time YooKassa payments.
 - Refund handling is not implemented.
-- Subscription cancellation/expiration events still need FOSSBilling-side event hooks or a small FOSSBilling module.
+- Local FOSSBilling Orchestrator module handles activate/renew/cancel/suspend hooks.
 - Product/order to Orchestrator plan mapping is manual.
