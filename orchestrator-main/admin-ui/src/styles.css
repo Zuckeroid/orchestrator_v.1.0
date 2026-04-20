@@ -425,23 +425,22 @@ input[type="checkbox"] {
 
 .nodes-table th:nth-child(3),
 .nodes-table td:nth-child(3) {
-  width: 14%;
+  width: 18%;
 }
 
 .nodes-table th:nth-child(8),
 .nodes-table td:nth-child(8) {
-  width: 12%;
+  width: 11%;
 }
 
 .nodes-table th:nth-child(9),
 .nodes-table td:nth-child(9) {
-  width: 14%;
+  width: 10%;
 }
 
 .nodes-table th:nth-child(10),
 .nodes-table td:nth-child(10) {
-  width: 16%;
-  white-space: nowrap;
+  width: 13%;
 }
 
 .nodes-table th:nth-child(4),
@@ -461,14 +460,28 @@ input[type="checkbox"] {
   word-break: break-word;
 }
 
-.nodes-table td:nth-child(10) .row-actions {
-  flex-wrap: nowrap;
-  gap: 6px;
+.nodes-table td:nth-child(9) .error-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .nodes-table td:nth-child(10) button {
   white-space: nowrap;
   padding: 8px 10px;
+}
+
+.nodes-table td:nth-child(10) .node-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  gap: 6px;
+  justify-content: start;
+}
+
+.nodes-table td:nth-child(10) .node-check-action {
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 
 .table-panel {

@@ -1120,12 +1120,9 @@ function NodesPanel({
                     )}
                   </td>
                   <td>
-                    <div className="row-actions">
+                    <div className="row-actions node-actions">
                       <button onClick={() => onEdit(node)} type="button">
                         Edit
-                      </button>
-                      <button onClick={() => onCheck(node.id)} type="button">
-                        Check now
                       </button>
                       {node.isActive ? (
                         <button onClick={() => onDisable(node.id)} type="button">
@@ -1140,6 +1137,13 @@ function NodesPanel({
                           Enable
                         </button>
                       )}
+                      <button
+                        className="node-check-action"
+                        onClick={() => onCheck(node.id)}
+                        type="button"
+                      >
+                        Check now
+                      </button>
                     </div>
                   </td>
                 </tr>
