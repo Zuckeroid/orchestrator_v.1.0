@@ -119,6 +119,8 @@ const emptyNodeForm: VpnNodeFormState = {
   capacity: '100',
 };
 
+const TABLE_PAGE_SIZE = 10;
+
 const DEFAULT_API_SETTINGS = {
   apiBaseUrl: '/api/v1',
   adminApiKey: '',
@@ -1179,10 +1181,18 @@ function ProvisionsPanel({
   onDeleteNow: (id: string) => void;
 }) {
   const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
   const filtered = provisions.filter((provision) =>
     statusFilter === 'all' ? true : provision.status === statusFilter,
   );
   const statuses = uniqueValues(provisions.map((item) => item.status));
+  const totalPages = Math.max(Math.ceil(filtered.length / TABLE_PAGE_SIZE), 1);
+  const currentPage = Math.min(page, totalPages);
+  const paged = paginate(filtered, currentPage, TABLE_PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
 
   return (
     <section className="panel table-panel">
@@ -1219,7 +1229,7 @@ function ProvisionsPanel({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((provision) => (
+            {paged.map((provision) => (
               <tr key={provision.id}>
                 <td>{provision.email}</td>
                 <td>{provision.externalSubscriptionId}</td>
@@ -1259,6 +1269,13 @@ function ProvisionsPanel({
           </tbody>
         </table>
       </div>
+      <PaginationControls
+        page={currentPage}
+        totalPages={totalPages}
+        totalItems={filtered.length}
+        pageSize={TABLE_PAGE_SIZE}
+        onPageChange={setPage}
+      />
     </section>
   );
 }
@@ -1454,6 +1471,7 @@ function EventsPanel({
   queue?: QueueOverview;
 }) {
   const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<ProcessedEvent | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -1462,21 +1480,28 @@ function EventsPanel({
     statusFilter === 'all' ? true : event.status === statusFilter,
   );
   const statuses = uniqueValues(events.map((item) => item.status));
+  const totalPages = Math.max(Math.ceil(filtered.length / TABLE_PAGE_SIZE), 1);
+  const currentPage = Math.min(page, totalPages);
+  const paged = paginate(filtered, currentPage, TABLE_PAGE_SIZE);
   const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
 
   useEffect(() => {
-    if (filtered.length === 0) {
+    setPage(1);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    if (paged.length === 0) {
       setSelectedEventId(null);
       setSelectedEvent(null);
       setDetailsError('');
       return;
     }
 
-    const existing = filtered.find((event) => event.id === selectedEventId);
+    const existing = paged.find((event) => event.id === selectedEventId);
     if (!existing) {
-      setSelectedEventId(filtered[0].id);
+      setSelectedEventId(paged[0].id);
     }
-  }, [filtered, selectedEventId]);
+  }, [paged, selectedEventId]);
 
   useEffect(() => {
     if (!selectedEventId) {
@@ -1556,7 +1581,7 @@ function EventsPanel({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((event) => (
+                {paged.map((event) => (
                   <tr
                     key={event.id}
                     className={event.id === selectedEventId ? 'event-row active' : 'event-row'}
@@ -1576,6 +1601,13 @@ function EventsPanel({
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            page={currentPage}
+            totalPages={totalPages}
+            totalItems={filtered.length}
+            pageSize={TABLE_PAGE_SIZE}
+            onPageChange={setPage}
+          />
         </section>
       </section>
       <section className="panel">
@@ -1689,6 +1721,46 @@ function DataTable({
   );
 }
 
+function PaginationControls({
+  page,
+  totalPages,
+  totalItems,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  const start = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, totalItems);
+
+  return (
+    <div className="table-footer">
+      <span className="pagination-info">
+        {totalItems === 0 ? '0 items' : `${start}-${end} of ${totalItems}`}
+      </span>
+      <div className="pagination">
+        <button disabled={page <= 1} onClick={() => onPageChange(page - 1)} type="button">
+          Prev
+        </button>
+        <span>
+          Page {page} / {totalPages}
+        </span>
+        <button
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          type="button"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function groupCounts(values: string[]) {
   return values.reduce<Record<string, number>>((acc, value) => {
     acc[value] = (acc[value] ?? 0) + 1;
@@ -1700,6 +1772,11 @@ function uniqueValues(values: string[]) {
   return Array.from(new Set(values)).sort((left, right) =>
     left.localeCompare(right),
   );
+}
+
+function paginate<T>(items: T[], page: number, pageSize: number) {
+  const start = (page - 1) * pageSize;
+  return items.slice(start, start + pageSize);
 }
 
 function formatJson(value: unknown): string {
