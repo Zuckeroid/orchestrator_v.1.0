@@ -415,17 +415,33 @@ input[type="checkbox"] {
 
 .nodes-table th:nth-child(1),
 .nodes-table td:nth-child(1) {
-  width: 14%;
+  width: 12%;
 }
 
 .nodes-table th:nth-child(2),
 .nodes-table td:nth-child(2) {
-  width: 10%;
+  width: 9%;
 }
 
 .nodes-table th:nth-child(3),
 .nodes-table td:nth-child(3) {
-  width: 18%;
+  width: 14%;
+}
+
+.nodes-table th:nth-child(8),
+.nodes-table td:nth-child(8) {
+  width: 12%;
+}
+
+.nodes-table th:nth-child(9),
+.nodes-table td:nth-child(9) {
+  width: 14%;
+}
+
+.nodes-table th:nth-child(10),
+.nodes-table td:nth-child(10) {
+  width: 16%;
+  white-space: nowrap;
 }
 
 .nodes-table th:nth-child(4),
@@ -443,6 +459,16 @@ input[type="checkbox"] {
 .nodes-table td:nth-child(3) .cell-note {
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.nodes-table td:nth-child(10) .row-actions {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.nodes-table td:nth-child(10) button {
+  white-space: nowrap;
+  padding: 8px 10px;
 }
 
 .table-panel {
