@@ -3,16 +3,29 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
-import { AdminApiKeyGuard } from '../../common/guards/admin-api-key.guard';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+import {
+  AdminRequest,
+  AdminApiKeyGuard,
+} from '../../common/guards/admin-api-key.guard';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { ProcessedEventsService } from './processed-events.service';
 
 @Controller('processed-events')
 @UseGuards(AdminApiKeyGuard)
 export class ProcessedEventsController {
-  constructor(private readonly processedEventsService: ProcessedEventsService) {}
+  constructor(
+    private readonly processedEventsService: ProcessedEventsService,
+    private readonly auditLogsService: AuditLogsService,
+    @InjectQueue('billing-events')
+    private readonly billingQueue: Queue,
+  ) {}
 
   @Get()
   async list(
@@ -47,6 +60,46 @@ export class ProcessedEventsController {
     return {
       success: true,
       data: await this.processedEventsService.getById(id),
+    };
+  }
+
+  @Post(':id/retry')
+  async retry(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: AdminRequest,
+  ) {
+    const before = await this.processedEventsService.getById(id);
+    const payload = await this.processedEventsService.buildRetryPayload(id);
+
+    await this.billingQueue.add(payload.event, payload, {
+      jobId: `manual-retry:${payload.eventId}:${Date.now()}`,
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 5000,
+      },
+      removeOnComplete: false,
+      removeOnFail: false,
+    });
+    await this.processedEventsService.markStatus(payload.eventId, 'queued');
+
+    const after = await this.processedEventsService.getById(id);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'processed_event',
+      entityId: id,
+      action: 'retry',
+      before,
+      after,
+    });
+
+    return {
+      success: true,
+      data: {
+        queued: true,
+        eventId: payload.eventId,
+      },
     };
   }
 }

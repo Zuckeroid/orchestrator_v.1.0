@@ -69,6 +69,19 @@ export class QueueService implements OnModuleInit {
     });
   }
 
+  async addManualRetryBillingEventJob(data: BillingEventPayload) {
+    await this.queue.add(data.event, data, {
+      jobId: `manual-retry:${data.eventId}:${Date.now()}`,
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 5000,
+      },
+      removeOnComplete: false,
+      removeOnFail: false,
+    });
+  }
+
   async addCleanupDueProvisionsJob(limit?: number) {
     await this.queue.add(
       'cleanup_due_provisions',

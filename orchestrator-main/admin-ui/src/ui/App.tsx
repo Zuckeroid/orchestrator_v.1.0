@@ -461,6 +461,12 @@ export function App() {
     );
   }
 
+  async function retryProcessedEvent(id: string) {
+    await runAction('Event queued for retry', () =>
+      api.post(`/processed-events/${id}/retry`),
+    );
+  }
+
   async function runAction(message: string, action: () => Promise<unknown>) {
     setIsLoading(true);
     setError('');
@@ -579,7 +585,11 @@ export function App() {
           />
         ) : null}
         {activeTab === 'events' ? (
-          <EventsPanel events={view.events} queue={view.queue} />
+          <EventsPanel
+            events={view.events}
+            queue={view.queue}
+            onRetry={retryProcessedEvent}
+          />
         ) : null}
         {activeTab === 'audit' ? <AuditPanel auditLogs={view.auditLogs} /> : null}
       </main>
@@ -1687,9 +1697,11 @@ function WebhookTesterPanel({
 function EventsPanel({
   events,
   queue,
+  onRetry,
 }: {
   events: ProcessedEvent[];
   queue?: QueueOverview;
+  onRetry: (id: string) => void;
 }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
@@ -1777,11 +1789,18 @@ function EventsPanel({
           <section className="panel event-details-panel">
             <div className="panel-heading">
               <h2>Event Details</h2>
-              {selectedEvent ? (
-                <span className={`status-pill ${statusTone(selectedEvent.status)}`}>
-                  {selectedEvent.status}
-                </span>
-              ) : null}
+              <div className="row-actions">
+                {selectedEvent?.status === 'failed' ? (
+                  <button type="button" onClick={() => onRetry(selectedEvent.id)}>
+                    Retry
+                  </button>
+                ) : null}
+                {selectedEvent ? (
+                  <span className={`status-pill ${statusTone(selectedEvent.status)}`}>
+                    {selectedEvent.status}
+                  </span>
+                ) : null}
+              </div>
             </div>
             {detailsLoading ? <p>Loading event details...</p> : null}
             {detailsError ? <div className="error-line">{detailsError}</div> : null}

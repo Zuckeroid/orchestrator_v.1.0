@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { BillingEventPayload } from '../../common/types/billing-event.type';
@@ -74,6 +74,42 @@ export class ProcessedEventsService {
     return event;
   }
 
+  async buildRetryPayload(id: string): Promise<BillingEventPayload> {
+    const event = await this.getById(id);
+    if (event.status !== 'failed') {
+      throw new BadRequestException(
+        `Only failed events can be retried manually (current status: ${event.status})`,
+      );
+    }
+
+    const email = this.readOptionalString(event.payload, 'email');
+    if (!email) {
+      throw new BadRequestException(
+        `Processed event ${event.eventId} does not contain an email required for retry`,
+      );
+    }
+
+    return {
+      event: event.eventType,
+      eventId: event.eventId,
+      externalUserId: event.externalUserId ?? this.readRequiredString(event.payload, 'externalUserId'),
+      externalSubscriptionId:
+        event.externalSubscriptionId ??
+        this.readRequiredString(event.payload, 'externalSubscriptionId'),
+      externalOrderId:
+        event.externalOrderId ?? this.readOptionalString(event.payload, 'externalOrderId'),
+      externalPaymentId:
+        event.externalPaymentId ??
+        this.readOptionalString(event.payload, 'externalPaymentId'),
+      externalPlanId:
+        event.externalPlanId ?? this.readOptionalString(event.payload, 'externalPlanId'),
+      email,
+      status: this.readOptionalString(event.payload, 'status'),
+      expiresAt: this.readOptionalString(event.payload, 'expiresAt'),
+      rawPayload: event.payload,
+    };
+  }
+
   async claim(payload: BillingEventPayload): Promise<ProcessedEventClaimResult> {
     const entity = new ProcessedEventEntity();
     entity.eventId = payload.eventId;
@@ -146,5 +182,32 @@ export class ProcessedEventsService {
       email: payload.email,
       status: payload.status,
     };
+  }
+
+  private readRequiredString(
+    payload: Record<string, unknown>,
+    key: string,
+  ): string {
+    const value = payload[key];
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new BadRequestException(
+        `Processed event payload does not contain a valid ${key}`,
+      );
+    }
+
+    return value;
+  }
+
+  private readOptionalString(
+    payload: Record<string, unknown>,
+    key: string,
+  ): string | undefined {
+    const value = payload[key];
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 }
