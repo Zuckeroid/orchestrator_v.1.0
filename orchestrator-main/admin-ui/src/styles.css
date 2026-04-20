@@ -425,17 +425,17 @@ input[type="checkbox"] {
 
 .nodes-table th:nth-child(3),
 .nodes-table td:nth-child(3) {
-  width: 18%;
+  width: 20%;
 }
 
 .nodes-table th:nth-child(8),
 .nodes-table td:nth-child(8) {
-  width: 11%;
+  width: 10%;
 }
 
 .nodes-table th:nth-child(9),
 .nodes-table td:nth-child(9) {
-  width: 10%;
+  width: 9%;
 }
 
 .nodes-table th:nth-child(10),
