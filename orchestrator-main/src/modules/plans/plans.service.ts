@@ -119,6 +119,14 @@ export class PlansService {
       );
     }
 
+    await this.provisionsRepository
+      .createQueryBuilder()
+      .update(ProvisionEntity)
+      .set({ planId: null })
+      .where('plan_id = :planId', { planId: plan.id })
+      .andWhere('status = :deletedStatus', { deletedStatus: 'deleted' })
+      .execute();
+
     await this.repository.remove(plan);
   }
 
