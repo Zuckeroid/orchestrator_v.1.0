@@ -2025,36 +2025,24 @@ function statusTone(value?: string | null): string {
     case 'ok':
     case 'online':
     case 'active':
+    case 'completed':
+    case 'paid':
       return 'green';
     case 'error':
     case 'offline':
     case 'failed':
+    case 'cancelled':
+    case 'deleted':
       return 'red';
     case 'degraded':
-      return 'yellow';
-    default:
-      return 'teal';
-  }
-}
-
-function statusTone(value?: string | null): string {
-  switch (value) {
-    case 'active':
-    case 'completed':
-    case 'paid':
-      return 'green';
     case 'processing':
     case 'queued':
     case 'provisioning':
     case 'suspended':
     case 'delayed':
       return 'yellow';
-    case 'failed':
-    case 'cancelled':
-    case 'deleted':
-      return 'red';
     default:
-      return 'slate';
+      return 'teal';
   }
 }
 
