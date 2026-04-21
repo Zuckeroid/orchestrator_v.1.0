@@ -7,6 +7,7 @@ import {
   VpnClient,
   VpnClientResult,
   VpnNodeConfig,
+  VpnNodeCheckOptions,
   VpnNodeCheckResult,
 } from '../vpn-client.interface';
 
@@ -41,8 +42,15 @@ export class ThreeXuiVpnClient implements VpnClient {
     rejectUnauthorized: false,
   });
 
-  async checkNode(node: VpnNodeConfig): Promise<VpnNodeCheckResult> {
+  async checkNode(
+    node: VpnNodeConfig,
+    options?: VpnNodeCheckOptions,
+  ): Promise<VpnNodeCheckResult> {
     this.ensureInboundId(node);
+
+    if (options?.forceReauth) {
+      this.sessions.delete(node.id);
+    }
 
     const inbound = await this.getInbound(node);
     const clientCount = this.countInboundClients(inbound);

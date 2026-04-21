@@ -170,6 +170,8 @@ export class VpnNodesService {
         apiKey: node.apiKey,
         apiVersion: node.apiVersion ?? undefined,
         inboundId: node.inboundId ?? undefined,
+      }, {
+        forceReauth: true,
       });
 
       node.lastError = null;

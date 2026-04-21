@@ -5,6 +5,7 @@ import {
   VpnClient,
   VpnClientResult,
   VpnNodeConfig,
+  VpnNodeCheckOptions,
   VpnNodeCheckResult,
 } from './vpn-client.interface';
 
@@ -12,7 +13,10 @@ import {
 export class NoopVpnClient implements VpnClient {
   private readonly logger = new Logger(NoopVpnClient.name);
 
-  async checkNode(node: VpnNodeConfig): Promise<VpnNodeCheckResult> {
+  async checkNode(
+    node: VpnNodeConfig,
+    _options?: VpnNodeCheckOptions,
+  ): Promise<VpnNodeCheckResult> {
     this.logger.log(`Mock VPN node checked: ${node.id}`);
 
     return {

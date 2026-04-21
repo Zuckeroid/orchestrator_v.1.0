@@ -29,8 +29,15 @@ export interface VpnNodeCheckResult {
   message: string;
 }
 
+export interface VpnNodeCheckOptions {
+  forceReauth?: boolean;
+}
+
 export interface VpnClient {
-  checkNode(node: VpnNodeConfig): Promise<VpnNodeCheckResult>;
+  checkNode(
+    node: VpnNodeConfig,
+    options?: VpnNodeCheckOptions,
+  ): Promise<VpnNodeCheckResult>;
   createClient(
     node: VpnNodeConfig,
     input: CreateVpnClientInput,
