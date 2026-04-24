@@ -57,6 +57,9 @@ export class ProvisioningService {
       case 'plan_changed':
         await this.updatePlan(event);
         return;
+      case 'subscription_delete':
+        await this.deleteByEvent(event);
+        return;
       default:
         this.assertNever(event.event);
     }
@@ -403,6 +406,20 @@ export class ProvisioningService {
       deletedAt: new Date(),
       error: null,
     });
+  }
+
+  private async deleteByEvent(event: BillingEventPayload): Promise<void> {
+    const provision = await this.provisionsService.findByExternalSubscriptionId(
+      event.externalSubscriptionId,
+    );
+    if (!provision) {
+      this.logger.warn(
+        `Cannot delete missing provision: ${event.externalSubscriptionId}`,
+      );
+      return;
+    }
+
+    await this.deleteProvisionResources(provision);
   }
 
   private async updatePlan(event: BillingEventPayload): Promise<void> {

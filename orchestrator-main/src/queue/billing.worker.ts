@@ -37,6 +37,11 @@ export class BillingWorker {
     return this.handleBillingEvent(job);
   }
 
+  @Process('subscription_delete')
+  async handleSubscriptionDelete(job: Job<BillingEventPayload>) {
+    return this.handleBillingEvent(job);
+  }
+
   @Process('cleanup_due_provisions')
   async handleCleanupDueProvisions(job: Job<{ limit?: number }>) {
     const limit = Number(job.data.limit ?? process.env.PROVISION_CLEANUP_LIMIT ?? 50);

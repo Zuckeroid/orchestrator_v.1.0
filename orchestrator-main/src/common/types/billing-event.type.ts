@@ -2,7 +2,8 @@ export type BillingEventType =
   | 'payment_paid'
   | 'subscription_cancel'
   | 'subscription_expired'
-  | 'plan_changed';
+  | 'plan_changed'
+  | 'subscription_delete';
 
 export interface BillingEventPayload {
   event: BillingEventType;

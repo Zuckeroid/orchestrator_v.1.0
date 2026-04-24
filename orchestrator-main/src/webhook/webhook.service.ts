@@ -115,6 +115,7 @@ export class WebhookService {
       'subscription_cancel',
       'subscription_expired',
       'plan_changed',
+      'subscription_delete',
     ];
 
     if (!supportedEvents.includes(payload.event)) {
