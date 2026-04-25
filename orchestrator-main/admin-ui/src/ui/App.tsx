@@ -536,6 +536,19 @@ export function App() {
     );
   }
 
+  async function purgeDeletedProvisions(options: { olderThanDays: number }) {
+    const confirmed = window.confirm(
+      `Delete deleted provisions older than ${options.olderThanDays} days?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await runAction('Deleted provisions purged', () =>
+      api.post('/provisions/purge', options),
+    );
+  }
+
   async function runAction(message: string, action: () => Promise<unknown>) {
     setIsLoading(true);
     setError('');
@@ -653,6 +666,7 @@ export function App() {
           <ProvisionsPanel
             initialProvisions={view.provisions}
             refreshVersion={refreshVersion}
+            onPurge={purgeDeletedProvisions}
             onDeleteNow={deleteProvisionNow}
           />
         ) : null}
@@ -1384,10 +1398,12 @@ function StorageBackendsPanel({
 function ProvisionsPanel({
   initialProvisions,
   refreshVersion,
+  onPurge,
   onDeleteNow,
 }: {
   initialProvisions: Provision[];
   refreshVersion: number;
+  onPurge: (options: { olderThanDays: number }) => void;
   onDeleteNow: (id: string) => void;
 }) {
   const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
@@ -1401,6 +1417,7 @@ function ProvisionsPanel({
   const [selectedProvision, setSelectedProvision] = useState<Provision | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState('');
+  const [purgeDays, setPurgeDays] = useState('30');
   const totalPages = Math.max(Math.ceil(totalItems / PROVISIONS_PAGE_SIZE), 1);
   const currentPage = Math.min(page, totalPages);
 
@@ -1514,6 +1531,17 @@ function ProvisionsPanel({
     };
   }, [api, refreshVersion, selectedProvisionId]);
 
+  function handlePurge() {
+    const olderThanDays = Number(purgeDays);
+    if (!Number.isFinite(olderThanDays) || olderThanDays < 1) {
+      return;
+    }
+
+    onPurge({
+      olderThanDays,
+    });
+  }
+
   return (
     <>
       <section className="provisions-layout">
@@ -1606,20 +1634,36 @@ function ProvisionsPanel({
         <section className="panel table-panel">
           <div className="panel-heading">
             <h2>Provisions</h2>
-            <label className="inline-filter">
-              Status
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                <option value="all">All</option>
-                {PROVISION_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="row-actions filter-toolbar">
+              <label className="inline-filter">
+                Status
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                >
+                  <option value="all">All</option>
+                  {PROVISION_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="inline-filter">
+                Purge deleted older than
+                <input
+                  min="1"
+                  step="1"
+                  type="number"
+                  value={purgeDays}
+                  onChange={(event) => setPurgeDays(event.target.value)}
+                />
+                <span>days</span>
+              </label>
+              <button type="button" onClick={handlePurge}>
+                Purge
+              </button>
+            </div>
           </div>
           {listLoading ? <p>Loading provisions...</p> : null}
           {listError ? <div className="error-line">{listError}</div> : null}

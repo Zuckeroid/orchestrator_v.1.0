@@ -190,4 +190,24 @@ export class ProvisionsService {
       },
     );
   }
+
+  async purgeDeleted(olderThanDays: number): Promise<number> {
+    const normalizedDays = Number(olderThanDays);
+    const retentionDays = Number.isFinite(normalizedDays)
+      ? Math.max(1, Math.min(normalizedDays, 3650))
+      : 30;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - retentionDays);
+
+    const result = await this.repository
+      .createQueryBuilder()
+      .delete()
+      .from(ProvisionEntity)
+      .where('status = :status', { status: 'deleted' })
+      .andWhere('deleted_at IS NOT NULL')
+      .andWhere('deleted_at < :cutoff', { cutoff })
+      .execute();
+
+    return result.affected ?? 0;
+  }
 }
