@@ -460,6 +460,15 @@ input[type="checkbox"] {
   min-width: 140px;
 }
 
+.inline-filter input {
+  width: 88px;
+}
+
+.filter-toolbar {
+  align-items: end;
+  justify-content: flex-end;
+}
+
 .form-panel {
   align-self: start;
   display: grid;

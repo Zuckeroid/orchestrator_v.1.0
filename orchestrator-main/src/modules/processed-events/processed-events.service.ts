@@ -12,6 +12,13 @@ export interface ProcessedEventClaimResult {
   event: ProcessedEventEntity;
 }
 
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 @Injectable()
 export class ProcessedEventsService {
   constructor(
@@ -25,7 +32,7 @@ export class ProcessedEventsService {
     eventId?: string;
     page?: number;
     limit?: number;
-  }): Promise<ProcessedEventEntity[]> {
+  }): Promise<PaginatedResult<ProcessedEventEntity>> {
     const query = this.repository
       .createQueryBuilder('event')
       .orderBy('event.received_at', 'DESC');
@@ -47,13 +54,25 @@ export class ProcessedEventsService {
       query.andWhere('event.event_id = :eventId', { eventId: filters.eventId });
     }
 
-    const limit = Math.min(filters.limit ?? 50, 200);
-    const page = Math.max(filters.page ?? 1, 1);
-
-    return query
+    const normalizedLimit = Number(filters.limit);
+    const normalizedPage = Number(filters.page);
+    const limit = Number.isFinite(normalizedLimit)
+      ? Math.max(1, Math.min(normalizedLimit, 200))
+      : 50;
+    const page = Number.isFinite(normalizedPage)
+      ? Math.max(normalizedPage, 1)
+      : 1;
+    const [items, total] = await query
       .take(limit)
       .skip((page - 1) * limit)
-      .getMany();
+      .getManyAndCount();
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+    };
   }
 
   async getById(id: string): Promise<ProcessedEventEntity> {
@@ -158,6 +177,35 @@ export class ProcessedEventsService {
           status === 'completed' || status === 'failed' ? new Date() : null,
       },
     );
+  }
+
+  async purge(filters: {
+    status?: 'completed' | 'failed' | 'all-terminal';
+    olderThanDays: number;
+  }): Promise<number> {
+    const normalizedDays = Number(filters.olderThanDays);
+    const olderThanDays = Number.isFinite(normalizedDays)
+      ? Math.max(1, Math.min(normalizedDays, 3650))
+      : 30;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - olderThanDays);
+
+    const statuses =
+      filters.status === 'failed'
+        ? (['failed'] as const)
+        : filters.status === 'all-terminal'
+          ? (['completed', 'failed'] as const)
+          : (['completed'] as const);
+
+    const result = await this.repository
+      .createQueryBuilder()
+      .delete()
+      .from(ProcessedEventEntity)
+      .where('status IN (:...statuses)', { statuses })
+      .andWhere('received_at < :cutoff', { cutoff })
+      .execute();
+
+    return result.affected ?? 0;
   }
 
   private isUniqueViolation(error: unknown): boolean {

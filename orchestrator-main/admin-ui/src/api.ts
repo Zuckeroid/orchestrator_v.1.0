@@ -14,6 +14,13 @@ export interface ApiEnvelope<T> {
   };
 }
 
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export class ApiClient {
   constructor(private readonly settings: ApiSettings) {}
 

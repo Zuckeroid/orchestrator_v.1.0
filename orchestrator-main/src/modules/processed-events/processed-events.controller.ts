@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -99,6 +100,46 @@ export class ProcessedEventsController {
       data: {
         queued: true,
         eventId: payload.eventId,
+      },
+    };
+  }
+
+  @Post('purge')
+  async purge(
+    @Body()
+    body: {
+      status?: 'completed' | 'failed' | 'all-terminal';
+      olderThanDays?: number;
+    } = {},
+    @Req() request: AdminRequest,
+  ) {
+    const status = body.status ?? 'completed';
+    const olderThanDays = Number(body.olderThanDays ?? 30);
+    const deleted = await this.processedEventsService.purge({
+      status,
+      olderThanDays,
+    });
+
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'processed_event',
+      action: 'purge',
+      before: {
+        status,
+        olderThanDays,
+      },
+      after: {
+        deleted,
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        deleted,
+        status,
+        olderThanDays,
       },
     };
   }

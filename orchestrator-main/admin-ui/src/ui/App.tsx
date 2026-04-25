@@ -5,6 +5,7 @@ import {
   BillingWebhookEvent,
   BillingWebhookPayload,
   HealthData,
+  PaginatedResult,
   Plan,
   ProcessedEvent,
   Provision,
@@ -79,6 +80,8 @@ interface ViewState {
   provisions: Provision[];
   events: ProcessedEvent[];
   auditLogs: AuditLog[];
+  activeProvisionCount: number;
+  failedEventCount: number;
 }
 
 const emptyViewState: ViewState = {
@@ -88,6 +91,8 @@ const emptyViewState: ViewState = {
   provisions: [],
   events: [],
   auditLogs: [],
+  activeProvisionCount: 0,
+  failedEventCount: 0,
 };
 
 const emptyPlanForm: PlanFormState = {
@@ -126,6 +131,16 @@ const emptyNodeForm: VpnNodeFormState = {
 const PROVISIONS_PAGE_SIZE = 10;
 const EVENTS_PAGE_SIZE = 10;
 const AUDIT_PAGE_SIZE = 15;
+const PROVISION_STATUSES = [
+  'pending',
+  'provisioning',
+  'active',
+  'failed',
+  'suspended',
+  'cancelled',
+  'deleted',
+];
+const EVENT_STATUSES = ['received', 'queued', 'processing', 'completed', 'failed'];
 
 const DEFAULT_API_SETTINGS = {
   apiBaseUrl: '/api/v1',
@@ -160,6 +175,7 @@ export function App() {
   const [status, setStatus] = useState('Ready');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [planForm, setPlanForm] = useState<PlanFormState>(emptyPlanForm);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [webhookForm, setWebhookForm] = useState<WebhookFormState>(() =>
@@ -197,8 +213,10 @@ export function App() {
         plans,
         nodes,
         storageBackends,
-        provisions,
-        events,
+        provisionsPage,
+        activeProvisionsPage,
+        eventsPage,
+        failedEventsPage,
         auditLogs,
       ] = await Promise.all([
           api.get<HealthData>('/health'),
@@ -206,8 +224,16 @@ export function App() {
           api.get<Plan[]>('/plans'),
           api.get<VpnNode[]>('/nodes/vpn'),
           api.get<StorageBackend[]>('/storage-backends'),
-          api.get<Provision[]>('/provisions?limit=50'),
-          api.get<ProcessedEvent[]>('/processed-events?limit=50'),
+          api.get<PaginatedResult<Provision>>(
+            `/provisions?page=1&limit=${PROVISIONS_PAGE_SIZE}`,
+          ),
+          api.get<PaginatedResult<Provision>>('/provisions?status=active&page=1&limit=1'),
+          api.get<PaginatedResult<ProcessedEvent>>(
+            `/processed-events?page=1&limit=${EVENTS_PAGE_SIZE}`,
+          ),
+          api.get<PaginatedResult<ProcessedEvent>>(
+            '/processed-events?status=failed&page=1&limit=1',
+          ),
           api.get<AuditLog[]>('/audit-logs?limit=50'),
         ]);
 
@@ -217,10 +243,13 @@ export function App() {
         plans,
         nodes,
         storageBackends,
-        provisions,
-        events,
+        provisions: provisionsPage.items,
+        events: eventsPage.items,
         auditLogs,
+        activeProvisionCount: activeProvisionsPage.total,
+        failedEventCount: failedEventsPage.total,
       });
+      setRefreshVersion((current) => current + 1);
       setStatus(`Updated ${new Date().toLocaleTimeString()}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -491,6 +520,22 @@ export function App() {
     );
   }
 
+  async function purgeProcessedEvents(options: {
+    status: 'completed' | 'failed' | 'all-terminal';
+    olderThanDays: number;
+  }) {
+    const confirmed = window.confirm(
+      `Delete ${options.status} events older than ${options.olderThanDays} days?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await runAction('Old events purged', () =>
+      api.post('/processed-events/purge', options),
+    );
+  }
+
   async function runAction(message: string, action: () => Promise<unknown>) {
     setIsLoading(true);
     setError('');
@@ -606,7 +651,8 @@ export function App() {
         ) : null}
         {activeTab === 'provisions' ? (
           <ProvisionsPanel
-            provisions={view.provisions}
+            initialProvisions={view.provisions}
+            refreshVersion={refreshVersion}
             onDeleteNow={deleteProvisionNow}
           />
         ) : null}
@@ -622,8 +668,10 @@ export function App() {
         ) : null}
         {activeTab === 'events' ? (
           <EventsPanel
-            events={view.events}
+            initialEvents={view.events}
             queue={view.queue}
+            refreshVersion={refreshVersion}
+            onPurge={purgeProcessedEvents}
             onRetry={retryProcessedEvent}
           />
         ) : null}
@@ -642,10 +690,6 @@ function Dashboard({
   queue?: QueueOverview;
   view: ViewState;
 }) {
-  const activeProvisions = view.provisions.filter(
-    (item) => item.status === 'active',
-  ).length;
-  const failedEvents = view.events.filter((item) => item.status === 'failed').length;
   const nodeHealth = groupCounts(
     view.nodes.map((item) => item.healthStatus || 'unknown'),
   );
@@ -669,8 +713,12 @@ function Dashboard({
         />
         <Metric title="Nodes offline" value={nodeHealth.offline ?? 0} tone="red" />
         <Metric title="Nodes unknown" value={nodeHealth.unknown ?? 0} tone="teal" />
-        <Metric title="Active provisions" value={activeProvisions} tone="green" />
-        <Metric title="Failed events" value={failedEvents} tone="red" />
+        <Metric
+          title="Active provisions"
+          value={view.activeProvisionCount}
+          tone="green"
+        />
+        <Metric title="Failed events" value={view.failedEventCount} tone="red" />
         <Metric title="Queue delayed" value={queue?.counts.delayed ?? 0} tone="yellow" />
       </section>
       <section className="dashboard-top-grid">
@@ -1334,44 +1382,103 @@ function StorageBackendsPanel({
 }
 
 function ProvisionsPanel({
-  provisions,
+  initialProvisions,
+  refreshVersion,
   onDeleteNow,
 }: {
-  provisions: Provision[];
+  initialProvisions: Provision[];
+  refreshVersion: number;
   onDeleteNow: (id: string) => void;
 }) {
+  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
+  const [provisions, setProvisions] = useState<Provision[]>(initialProvisions);
+  const [totalItems, setTotalItems] = useState(initialProvisions.length);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [selectedProvisionId, setSelectedProvisionId] = useState<string | null>(null);
   const [selectedProvision, setSelectedProvision] = useState<Provision | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState('');
-  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
-  const filtered = provisions.filter((provision) =>
-    statusFilter === 'all' ? true : provision.status === statusFilter,
-  );
-  const statuses = uniqueValues(provisions.map((item) => item.status));
-  const totalPages = Math.max(Math.ceil(filtered.length / PROVISIONS_PAGE_SIZE), 1);
+  const totalPages = Math.max(Math.ceil(totalItems / PROVISIONS_PAGE_SIZE), 1);
   const currentPage = Math.min(page, totalPages);
-  const paged = paginate(filtered, currentPage, PROVISIONS_PAGE_SIZE);
 
   useEffect(() => {
     setPage(1);
   }, [statusFilter]);
 
   useEffect(() => {
-    if (paged.length === 0) {
+    let cancelled = false;
+
+    async function loadPage() {
+      setListLoading(true);
+      setListError('');
+      try {
+        const query = new URLSearchParams({
+          page: String(currentPage),
+          limit: String(PROVISIONS_PAGE_SIZE),
+        });
+
+        if (statusFilter !== 'all') {
+          query.set('status', statusFilter);
+        }
+
+        const response = await api.get<PaginatedResult<Provision>>(
+          `/provisions?${query.toString()}`,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextTotalPages = Math.max(
+          Math.ceil(response.total / PROVISIONS_PAGE_SIZE),
+          1,
+        );
+
+        if (response.items.length === 0 && response.total > 0 && currentPage > nextTotalPages) {
+          setPage(nextTotalPages);
+          return;
+        }
+
+        setProvisions(response.items);
+        setTotalItems(response.total);
+      } catch (caught) {
+        if (!cancelled) {
+          setListError(caught instanceof Error ? caught.message : String(caught));
+          setProvisions([]);
+          setTotalItems(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setListLoading(false);
+        }
+      }
+    }
+
+    void loadPage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, currentPage, refreshVersion, statusFilter]);
+
+  useEffect(() => {
+    if (provisions.length === 0) {
       setSelectedProvisionId(null);
       setSelectedProvision(null);
       setDetailsError('');
       return;
     }
 
-    const existing = paged.find((provision) => provision.id === selectedProvisionId);
+    const existing = provisions.find(
+      (provision) => provision.id === selectedProvisionId,
+    );
     if (!existing) {
-      setSelectedProvisionId(paged[0].id);
+      setSelectedProvisionId(provisions[0].id);
     }
-  }, [paged, selectedProvisionId]);
+  }, [provisions, selectedProvisionId]);
 
   useEffect(() => {
     if (!selectedProvisionId) {
@@ -1405,7 +1512,7 @@ function ProvisionsPanel({
     return () => {
       cancelled = true;
     };
-  }, [api, selectedProvisionId]);
+  }, [api, refreshVersion, selectedProvisionId]);
 
   return (
     <>
@@ -1506,7 +1613,7 @@ function ProvisionsPanel({
                 onChange={(event) => setStatusFilter(event.target.value)}
               >
                 <option value="all">All</option>
-                {statuses.map((status) => (
+                {PROVISION_STATUSES.map((status) => (
                   <option key={status} value={status}>
                     {status}
                   </option>
@@ -1514,6 +1621,8 @@ function ProvisionsPanel({
               </select>
             </label>
           </div>
+          {listLoading ? <p>Loading provisions...</p> : null}
+          {listError ? <div className="error-line">{listError}</div> : null}
           <div className="table-wrap">
             <table>
               <thead>
@@ -1525,7 +1634,7 @@ function ProvisionsPanel({
                 </tr>
               </thead>
               <tbody>
-                {paged.map((provision) => (
+                {provisions.map((provision) => (
                   <tr
                     key={provision.id}
                     className={
@@ -1549,7 +1658,7 @@ function ProvisionsPanel({
           <PaginationControls
             page={currentPage}
             totalPages={totalPages}
-            totalItems={filtered.length}
+            totalItems={totalItems}
             pageSize={PROVISIONS_PAGE_SIZE}
             onPageChange={setPage}
           />
@@ -1743,46 +1852,112 @@ function WebhookTesterPanel({
 }
 
 function EventsPanel({
-  events,
+  initialEvents,
   queue,
+  refreshVersion,
+  onPurge,
   onRetry,
 }: {
-  events: ProcessedEvent[];
+  initialEvents: ProcessedEvent[];
   queue?: QueueOverview;
+  refreshVersion: number;
+  onPurge: (options: {
+    status: 'completed' | 'failed' | 'all-terminal';
+    olderThanDays: number;
+  }) => void;
   onRetry: (id: string) => void;
 }) {
+  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
+  const [events, setEvents] = useState<ProcessedEvent[]>(initialEvents);
+  const [totalItems, setTotalItems] = useState(initialEvents.length);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<ProcessedEvent | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState('');
-  const filtered = events.filter((event) =>
-    statusFilter === 'all' ? true : event.status === statusFilter,
-  );
-  const statuses = uniqueValues(events.map((item) => item.status));
-  const totalPages = Math.max(Math.ceil(filtered.length / EVENTS_PAGE_SIZE), 1);
+  const [purgeStatus, setPurgeStatus] = useState<
+    'completed' | 'failed' | 'all-terminal'
+  >('completed');
+  const [purgeDays, setPurgeDays] = useState('30');
+  const totalPages = Math.max(Math.ceil(totalItems / EVENTS_PAGE_SIZE), 1);
   const currentPage = Math.min(page, totalPages);
-  const paged = paginate(filtered, currentPage, EVENTS_PAGE_SIZE);
-  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
 
   useEffect(() => {
     setPage(1);
   }, [statusFilter]);
 
   useEffect(() => {
-    if (paged.length === 0) {
+    let cancelled = false;
+
+    async function loadPage() {
+      setListLoading(true);
+      setListError('');
+      try {
+        const query = new URLSearchParams({
+          page: String(currentPage),
+          limit: String(EVENTS_PAGE_SIZE),
+        });
+
+        if (statusFilter !== 'all') {
+          query.set('status', statusFilter);
+        }
+
+        const response = await api.get<PaginatedResult<ProcessedEvent>>(
+          `/processed-events?${query.toString()}`,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextTotalPages = Math.max(
+          Math.ceil(response.total / EVENTS_PAGE_SIZE),
+          1,
+        );
+
+        if (response.items.length === 0 && response.total > 0 && currentPage > nextTotalPages) {
+          setPage(nextTotalPages);
+          return;
+        }
+
+        setEvents(response.items);
+        setTotalItems(response.total);
+      } catch (caught) {
+        if (!cancelled) {
+          setListError(caught instanceof Error ? caught.message : String(caught));
+          setEvents([]);
+          setTotalItems(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setListLoading(false);
+        }
+      }
+    }
+
+    void loadPage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, currentPage, refreshVersion, statusFilter]);
+
+  useEffect(() => {
+    if (events.length === 0) {
       setSelectedEventId(null);
       setSelectedEvent(null);
       setDetailsError('');
       return;
     }
 
-    const existing = paged.find((event) => event.id === selectedEventId);
+    const existing = events.find((event) => event.id === selectedEventId);
     if (!existing) {
-      setSelectedEventId(paged[0].id);
+      setSelectedEventId(events[0].id);
     }
-  }, [paged, selectedEventId]);
+  }, [events, selectedEventId]);
 
   useEffect(() => {
     if (!selectedEventId) {
@@ -1818,7 +1993,19 @@ function EventsPanel({
     return () => {
       cancelled = true;
     };
-  }, [api, selectedEventId]);
+  }, [api, refreshVersion, selectedEventId]);
+
+  function handlePurge() {
+    const olderThanDays = Number(purgeDays);
+    if (!Number.isFinite(olderThanDays) || olderThanDays < 1) {
+      return;
+    }
+
+    onPurge({
+      status: purgeStatus,
+      olderThanDays,
+    });
+  }
 
   return (
     <>
@@ -1895,21 +2082,54 @@ function EventsPanel({
         <section className="panel table-panel events-table-panel">
           <div className="panel-heading">
             <h2>Processed Events</h2>
-            <label className="inline-filter">
-              Status
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                <option value="all">All</option>
-                {statuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="row-actions filter-toolbar">
+              <label className="inline-filter">
+                Status
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                >
+                  <option value="all">All</option>
+                  {EVENT_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="inline-filter">
+                Purge
+                <select
+                  value={purgeStatus}
+                  onChange={(event) =>
+                    setPurgeStatus(
+                      event.target.value as 'completed' | 'failed' | 'all-terminal',
+                    )
+                  }
+                >
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                  <option value="all-terminal">All terminal</option>
+                </select>
+              </label>
+              <label className="inline-filter">
+                Older than
+                <input
+                  min="1"
+                  step="1"
+                  type="number"
+                  value={purgeDays}
+                  onChange={(event) => setPurgeDays(event.target.value)}
+                />
+                <span>days</span>
+              </label>
+              <button type="button" onClick={handlePurge}>
+                Purge
+              </button>
+            </div>
           </div>
+          {listLoading ? <p>Loading processed events...</p> : null}
+          {listError ? <div className="error-line">{listError}</div> : null}
           <div className="table-wrap">
             <table>
               <thead>
@@ -1921,7 +2141,7 @@ function EventsPanel({
                 </tr>
               </thead>
               <tbody>
-                {paged.map((event) => (
+                {events.map((event) => (
                   <tr
                     key={event.id}
                     className={event.id === selectedEventId ? 'event-row active' : 'event-row'}
@@ -1943,7 +2163,7 @@ function EventsPanel({
           <PaginationControls
             page={currentPage}
             totalPages={totalPages}
-            totalItems={filtered.length}
+            totalItems={totalItems}
             pageSize={EVENTS_PAGE_SIZE}
             onPageChange={setPage}
           />

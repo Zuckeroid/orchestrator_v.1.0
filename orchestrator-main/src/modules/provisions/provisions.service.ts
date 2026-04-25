@@ -7,6 +7,7 @@ import {
   ProvisionStatus,
   StorageStatus,
 } from '../../database/entities/provision.entity';
+import { PaginatedResult } from '../processed-events/processed-events.service';
 
 @Injectable()
 export class ProvisionsService {
@@ -20,7 +21,7 @@ export class ProvisionsService {
     externalUserId?: string;
     limit?: number;
     page?: number;
-  }): Promise<ProvisionEntity[]> {
+  }): Promise<PaginatedResult<ProvisionEntity>> {
     const query = this.repository
       .createQueryBuilder('provision')
       .orderBy('provision.created_at', 'DESC');
@@ -35,13 +36,25 @@ export class ProvisionsService {
       });
     }
 
-    const limit = Math.min(filters.limit ?? 50, 200);
-    const page = Math.max(filters.page ?? 1, 1);
-
-    return query
+    const normalizedLimit = Number(filters.limit);
+    const normalizedPage = Number(filters.page);
+    const limit = Number.isFinite(normalizedLimit)
+      ? Math.max(1, Math.min(normalizedLimit, 200))
+      : 50;
+    const page = Number.isFinite(normalizedPage)
+      ? Math.max(normalizedPage, 1)
+      : 1;
+    const [items, total] = await query
       .take(limit)
       .skip((page - 1) * limit)
-      .getMany();
+      .getManyAndCount();
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+    };
   }
 
   async getById(id: string): Promise<ProvisionEntity> {
