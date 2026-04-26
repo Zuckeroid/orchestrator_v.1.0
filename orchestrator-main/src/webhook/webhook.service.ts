@@ -129,10 +129,12 @@ export class WebhookService {
     if (payload.event === 'payment_paid') {
       this.requireField(payload.externalPaymentId, 'externalPaymentId');
       this.requireField(payload.externalPlanId, 'externalPlanId');
+      this.requireNumberField(payload.deviceLimit, 'deviceLimit');
     }
 
     if (payload.event === 'plan_changed') {
       this.requireField(payload.externalPlanId, 'externalPlanId');
+      this.requireNumberField(payload.deviceLimit, 'deviceLimit');
     }
 
     if (payload.expiresAt) {
@@ -310,6 +312,12 @@ export class WebhookService {
 
   private requireField(value: string | undefined, key: string): void {
     if (!value) {
+      throw new InvalidWebhookError('INVALID_PAYLOAD', `${key} is required`);
+    }
+  }
+
+  private requireNumberField(value: number | undefined, key: string): void {
+    if (value === undefined) {
       throw new InvalidWebhookError('INVALID_PAYLOAD', `${key} is required`);
     }
   }

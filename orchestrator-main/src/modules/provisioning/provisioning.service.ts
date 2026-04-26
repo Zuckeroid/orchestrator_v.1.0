@@ -131,7 +131,7 @@ export class ProvisioningService {
       await this.provisionsService.markProvisioning(provision);
       const serviceExpiresAt =
         this.parseServiceExpiresAt(event) ?? provision.serviceExpiresAt ?? undefined;
-      const vpnLimitIp = this.resolveVpnLimitIp(event, plan.maxDevices);
+      const vpnLimitIp = this.requireBillingDeviceLimit(event);
 
       if (plan.vpnEnabled) {
         const vpnNode = provision.vpnNodeId
@@ -438,7 +438,7 @@ export class ProvisioningService {
       event.externalPlanId,
     );
     await this.plansService.syncObservedMaxDevices(plan.entity, event.deviceLimit);
-    const vpnLimitIp = this.resolveVpnLimitIp(event, plan.maxDevices);
+    const vpnLimitIp = this.requireBillingDeviceLimit(event);
 
     this.logger.log(
       `Updating plan for ${event.externalSubscriptionId}: limitIp=${vpnLimitIp}, storage=${plan.storageSizeBytes}`,
@@ -526,19 +526,16 @@ export class ProvisioningService {
     return expiresAt;
   }
 
-  private resolveVpnLimitIp(
-    event: BillingEventPayload,
-    fallbackLimit: number,
-  ): number {
+  private requireBillingDeviceLimit(event: BillingEventPayload): number {
     if (
       typeof event.deviceLimit === 'number' &&
       Number.isFinite(event.deviceLimit) &&
-      event.deviceLimit > 0
+      event.deviceLimit >= 0
     ) {
       return event.deviceLimit;
     }
 
-    return Math.max(Number(fallbackLimit ?? 0), 0);
+    throw new Error('Billing webhook payload is missing deviceLimit');
   }
 
   private toStorageBackendConfig(
