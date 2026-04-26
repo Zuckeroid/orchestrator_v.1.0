@@ -153,4 +153,21 @@ export class PlansService {
       storageEnabled: plan.storageEnabled,
     };
   }
+
+  async syncObservedMaxDevices(
+    plan: PlanEntity | undefined,
+    maxDevices: number | undefined,
+  ): Promise<void> {
+    if (!plan || maxDevices === undefined || !Number.isFinite(maxDevices)) {
+      return;
+    }
+
+    const normalized = Math.max(Math.trunc(Number(maxDevices)), 0);
+    if ((plan.maxDevices ?? null) === normalized) {
+      return;
+    }
+
+    plan.maxDevices = normalized;
+    await this.repository.save(plan);
+  }
 }

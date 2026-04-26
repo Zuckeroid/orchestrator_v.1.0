@@ -122,6 +122,7 @@ export class ProvisioningService {
       const plan = await this.plansService.resolveByExternalPlanId(
         event.externalPlanId,
       );
+      await this.plansService.syncObservedMaxDevices(plan.entity, event.deviceLimit);
 
       this.logger.log(
         `Provisioning subscription ${event.externalSubscriptionId} for ${event.email}`,
@@ -436,6 +437,7 @@ export class ProvisioningService {
     const plan = await this.plansService.resolveByExternalPlanId(
       event.externalPlanId,
     );
+    await this.plansService.syncObservedMaxDevices(plan.entity, event.deviceLimit);
     const vpnLimitIp = this.resolveVpnLimitIp(event, plan.maxDevices);
 
     this.logger.log(

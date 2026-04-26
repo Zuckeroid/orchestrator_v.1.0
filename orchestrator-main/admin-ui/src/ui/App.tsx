@@ -99,7 +99,7 @@ const emptyPlanForm: PlanFormState = {
   externalPlanId: '',
   billingProvider: '',
   name: '',
-  maxDevices: '3',
+  maxDevices: '',
   storageSize: '10737418240',
   vpnEnabled: true,
   storageEnabled: true,
@@ -306,7 +306,7 @@ export function App() {
       externalPlanId: plan.externalPlanId,
       billingProvider: plan.billingProvider ?? '',
       name: plan.name,
-      maxDevices: String(plan.maxDevices ?? 0),
+      maxDevices: plan.maxDevices === null || plan.maxDevices === undefined ? '' : String(plan.maxDevices),
       storageSize: plan.storageSize ?? '0',
       vpnEnabled: plan.vpnEnabled,
       storageEnabled: plan.storageEnabled,
@@ -904,17 +904,18 @@ function PlanMappingPanel({
           />
         </label>
         <label>
-          Max devices / IP limit
+          Observed billing device limit
           <input
-            required
             type="number"
             min="0"
             value={form.maxDevices}
-            onChange={(event) =>
-              setForm({ ...form, maxDevices: event.target.value })
-            }
+            readOnly
           />
         </label>
+        <small>
+          Filled automatically from billing webhook payload. The billing tariff is
+          the source of truth for device slots.
+        </small>
         <label>
           Storage bytes
           <input
@@ -967,7 +968,7 @@ function PlanMappingPanel({
                 <th>Mapping</th>
                 <th>Billing plan ID</th>
                 <th>Provider</th>
-                <th>IP limit</th>
+                <th>Observed device limit</th>
                 <th>Storage bytes</th>
                 <th>VPN</th>
                 <th>Storage</th>
@@ -2484,10 +2485,14 @@ function formatJson(value: unknown): string {
 }
 
 function buildPlanPayload(form: PlanFormState) {
+  const normalizedMaxDevices = form.maxDevices.trim();
+
   return {
     billingProvider: form.billingProvider.trim() || null,
     name: form.name,
-    maxDevices: Number(form.maxDevices),
+    ...(normalizedMaxDevices !== ''
+      ? { maxDevices: Number(normalizedMaxDevices) }
+      : {}),
     storageSize: form.storageSize,
     vpnEnabled: form.vpnEnabled,
     storageEnabled: form.storageEnabled,
