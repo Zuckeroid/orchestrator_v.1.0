@@ -13,6 +13,7 @@ export interface BillingEventPayload {
   externalOrderId?: string;
   externalPaymentId?: string;
   externalPlanId?: string;
+  deviceLimit?: number;
   email: string;
   status?: string;
   expiresAt?: string;

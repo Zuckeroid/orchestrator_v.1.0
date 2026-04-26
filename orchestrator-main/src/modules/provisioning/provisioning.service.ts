@@ -130,6 +130,7 @@ export class ProvisioningService {
       await this.provisionsService.markProvisioning(provision);
       const serviceExpiresAt =
         this.parseServiceExpiresAt(event) ?? provision.serviceExpiresAt ?? undefined;
+      const vpnLimitIp = this.resolveVpnLimitIp(event, plan.maxDevices);
 
       if (plan.vpnEnabled) {
         const vpnNode = provision.vpnNodeId
@@ -146,7 +147,7 @@ export class ProvisioningService {
           await this.vpnClient.updateClient(nodeConfig, provision.vpnLogin, {
             email: event.email,
             externalSubscriptionId: event.externalSubscriptionId,
-            limitIp: plan.maxDevices,
+            limitIp: vpnLimitIp,
             expiresAt: serviceExpiresAt,
             enable: true,
           });
@@ -159,7 +160,7 @@ export class ProvisioningService {
           vpn = await this.vpnClient.createClient(nodeConfig, {
             email: event.email,
             externalSubscriptionId: event.externalSubscriptionId,
-            limitIp: plan.maxDevices,
+            limitIp: vpnLimitIp,
             expiresAt: serviceExpiresAt,
           });
         }
@@ -435,9 +436,10 @@ export class ProvisioningService {
     const plan = await this.plansService.resolveByExternalPlanId(
       event.externalPlanId,
     );
+    const vpnLimitIp = this.resolveVpnLimitIp(event, plan.maxDevices);
 
     this.logger.log(
-      `Updating plan for ${event.externalSubscriptionId}: limitIp=${plan.maxDevices}, storage=${plan.storageSizeBytes}`,
+      `Updating plan for ${event.externalSubscriptionId}: limitIp=${vpnLimitIp}, storage=${plan.storageSizeBytes}`,
     );
 
     await this.provisionsService.updatePlan(provision, plan.planId);
@@ -450,7 +452,7 @@ export class ProvisioningService {
         {
           email: event.email || provision.email,
           externalSubscriptionId: event.externalSubscriptionId,
-          limitIp: plan.maxDevices,
+          limitIp: vpnLimitIp,
           expiresAt:
             this.parseServiceExpiresAt(event) ??
             provision.serviceExpiresAt ??
@@ -465,7 +467,7 @@ export class ProvisioningService {
         {
           email: event.email || provision.email,
           externalSubscriptionId: event.externalSubscriptionId,
-          limitIp: plan.maxDevices,
+          limitIp: vpnLimitIp,
           expiresAt:
             this.parseServiceExpiresAt(event) ??
             provision.serviceExpiresAt ??
@@ -520,6 +522,21 @@ export class ProvisioningService {
     }
 
     return expiresAt;
+  }
+
+  private resolveVpnLimitIp(
+    event: BillingEventPayload,
+    fallbackLimit: number,
+  ): number {
+    if (
+      typeof event.deviceLimit === 'number' &&
+      Number.isFinite(event.deviceLimit) &&
+      event.deviceLimit > 0
+    ) {
+      return event.deviceLimit;
+    }
+
+    return Math.max(Number(fallbackLimit ?? 0), 0);
   }
 
   private toStorageBackendConfig(

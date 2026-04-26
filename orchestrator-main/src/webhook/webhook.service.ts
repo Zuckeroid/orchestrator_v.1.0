@@ -98,6 +98,7 @@ export class WebhookService {
       externalOrderId: this.getOptionalString(body, 'externalOrderId'),
       externalPaymentId: this.getOptionalString(body, 'externalPaymentId'),
       externalPlanId: this.getOptionalString(body, 'externalPlanId'),
+      deviceLimit: this.getOptionalNumber(body, 'deviceLimit'),
       email: this.getString(body, 'email'),
       status: this.getOptionalString(body, 'status'),
       expiresAt: this.getOptionalString(body, 'expiresAt'),
@@ -142,6 +143,16 @@ export class WebhookService {
           'expiresAt must be an ISO date string',
         );
       }
+    }
+
+    if (
+      payload.deviceLimit !== undefined &&
+      (!Number.isInteger(payload.deviceLimit) || payload.deviceLimit < 0)
+    ) {
+      throw new InvalidWebhookError(
+        'INVALID_PAYLOAD',
+        'deviceLimit must be a non-negative integer',
+      );
     }
   }
 
@@ -268,6 +279,29 @@ export class WebhookService {
     }
 
     return value;
+  }
+
+  private getOptionalNumber(
+    body: Record<string, unknown>,
+    key: string,
+  ): number | undefined {
+    const value = body[key];
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    throw new InvalidWebhookError('INVALID_PAYLOAD', `${key} must be a number`);
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

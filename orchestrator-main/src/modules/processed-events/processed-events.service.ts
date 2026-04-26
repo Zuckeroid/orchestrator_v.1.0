@@ -122,6 +122,8 @@ export class ProcessedEventsService {
         this.readOptionalString(event.payload, 'externalPaymentId'),
       externalPlanId:
         event.externalPlanId ?? this.readOptionalString(event.payload, 'externalPlanId'),
+      deviceLimit:
+        event.deviceLimit ?? this.readOptionalNumber(event.payload, 'deviceLimit'),
       email,
       status: this.readOptionalString(event.payload, 'status'),
       expiresAt: this.readOptionalString(event.payload, 'expiresAt'),
@@ -227,8 +229,10 @@ export class ProcessedEventsService {
       externalOrderId: payload.externalOrderId,
       externalPaymentId: payload.externalPaymentId,
       externalPlanId: payload.externalPlanId,
+      deviceLimit: payload.deviceLimit,
       email: payload.email,
       status: payload.status,
+      expiresAt: payload.expiresAt,
     };
   }
 
@@ -257,5 +261,22 @@ export class ProcessedEventsService {
 
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  private readOptionalNumber(
+    payload: Record<string, unknown>,
+    key: string,
+  ): number | undefined {
+    const value = payload[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
   }
 }
