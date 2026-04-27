@@ -6,6 +6,7 @@ import { PolicyTemplateEntity } from '../../database/entities/policy-template.en
 import { ProvisionEntity } from '../../database/entities/provision.entity';
 import { ProviderAccessEntity } from '../../database/entities/provider-access.entity';
 import { PaginatedResult } from '../processed-events/processed-events.service';
+import { ConfiguratorRuntimeService } from './configurator-runtime.service';
 
 interface ConfiguratorServiceListFilters {
   status?: string;
@@ -20,6 +21,7 @@ export class ConfiguratorService {
     private readonly provisionsRepository: Repository<ProvisionEntity>,
     @InjectRepository(PolicyTemplateEntity)
     private readonly policyTemplatesRepository: Repository<PolicyTemplateEntity>,
+    private readonly configuratorRuntimeService: ConfiguratorRuntimeService,
   ) {}
 
   async listServices(
@@ -99,6 +101,12 @@ export class ConfiguratorService {
       createdAt: template.createdAt.toISOString(),
       updatedAt: template.updatedAt.toISOString(),
     }));
+  }
+
+  async regenerateServiceConfig(id: string): Promise<ConfiguratorServiceDetail> {
+    await this.getExistingProvision(id);
+    await this.configuratorRuntimeService.syncProvisionSnapshot(id);
+    return this.getServiceById(id);
   }
 
   private mapServiceSummary(
@@ -243,6 +251,18 @@ export class ConfiguratorService {
     return Array.from(
       new Set(values.map((value) => value.trim()).filter((value) => value !== '')),
     ).sort((left, right) => left.localeCompare(right));
+  }
+
+  private async getExistingProvision(id: string): Promise<ProvisionEntity> {
+    const provision = await this.provisionsRepository.findOne({
+      where: { id },
+    });
+
+    if (!provision) {
+      throw new NotFoundException(`Configurator service not found: ${id}`);
+    }
+
+    return provision;
   }
 }
 

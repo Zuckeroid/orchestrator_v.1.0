@@ -1740,6 +1740,10 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
     useState<ConfiguratorServiceDetail | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [regenerateLoading, setRegenerateLoading] = useState(false);
+  const [reloadVersion, setReloadVersion] = useState(0);
   const totalPages = Math.max(Math.ceil(totalItems / CONFIGURATOR_PAGE_SIZE), 1);
   const currentPage = Math.min(page, totalPages);
 
@@ -1804,7 +1808,7 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
     return () => {
       cancelled = true;
     };
-  }, [api, currentPage, refreshVersion, statusFilter]);
+  }, [api, currentPage, refreshVersion, reloadVersion, statusFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1855,6 +1859,11 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
   }, [services, selectedServiceId]);
 
   useEffect(() => {
+    setActionMessage('');
+    setActionError('');
+  }, [selectedServiceId]);
+
+  useEffect(() => {
     if (!selectedServiceId) {
       return;
     }
@@ -1888,7 +1897,30 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
     return () => {
       cancelled = true;
     };
-  }, [api, refreshVersion, selectedServiceId]);
+  }, [api, refreshVersion, reloadVersion, selectedServiceId]);
+
+  async function handleRegenerateConfig() {
+    if (!selectedServiceId) {
+      return;
+    }
+
+    setRegenerateLoading(true);
+    setActionMessage('');
+    setActionError('');
+
+    try {
+      const details = await api.post<ConfiguratorServiceDetail>(
+        `/configurator/services/${selectedServiceId}/regenerate`,
+      );
+      setSelectedService(details);
+      setActionMessage('Config regenerated');
+      setReloadVersion((value) => value + 1);
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setRegenerateLoading(false);
+    }
+  }
 
   return (
     <section className="provisions-layout">
@@ -1896,14 +1928,25 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
         <section className="panel event-details-panel">
           <div className="panel-heading">
             <h2>Service Config</h2>
-            {selectedService ? (
-              <span className={`status-pill ${statusTone(selectedService.status)}`}>
-                {selectedService.status}
-              </span>
-            ) : null}
+            <div className="row-actions">
+              {selectedService ? (
+                <span className={`status-pill ${statusTone(selectedService.status)}`}>
+                  {selectedService.status}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleRegenerateConfig()}
+                disabled={!selectedServiceId || detailsLoading || regenerateLoading}
+              >
+                {regenerateLoading ? 'Regenerating...' : 'Regenerate config'}
+              </button>
+            </div>
           </div>
           {detailsLoading ? <p>Loading configurator details...</p> : null}
           {detailsError ? <div className="error-line">{detailsError}</div> : null}
+          {actionError ? <div className="error-line">{actionError}</div> : null}
+          {actionMessage ? <div className="success-line">{actionMessage}</div> : null}
           {!detailsLoading && !detailsError && !selectedService ? (
             <p className="muted">
               Select a service to inspect the future device runtime model.
@@ -1998,8 +2041,8 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
                 <h3>Device configs</h3>
                 {selectedService.deviceConfigs.length === 0 ? (
                   <p className="muted">
-                    No device configs yet. This is expected until the
-                    `device_activated` flow is wired into the configurator.
+                    No device configs yet. Use `Regenerate config` to build a
+                    service-level snapshot for existing provisions.
                   </p>
                 ) : (
                   <div className="configurator-stack">

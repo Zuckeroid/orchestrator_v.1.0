@@ -3,6 +3,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -35,6 +36,14 @@ export class ConfiguratorController {
     return {
       success: true,
       data: await this.configuratorService.getServiceById(id),
+    };
+  }
+
+  @Post('services/:id/regenerate')
+  async regenerateService(@Param('id', new ParseUUIDPipe()) id: string) {
+    return {
+      success: true,
+      data: await this.configuratorService.regenerateServiceConfig(id),
     };
   }
 
