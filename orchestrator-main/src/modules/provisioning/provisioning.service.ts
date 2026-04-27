@@ -20,6 +20,7 @@ import {
   VpnNodeConfig,
 } from '../../integrations/vpn/vpn-client.interface';
 import { VPN_CLIENT } from '../../integrations/vpn/vpn.module';
+import { ConfiguratorRuntimeService } from '../configurator/configurator-runtime.service';
 import { VpnNodesService } from '../nodes/vpn-nodes.service';
 import { PlansService } from '../plans/plans.service';
 import { ProvisionsService } from '../provisions/provisions.service';
@@ -37,6 +38,7 @@ export class ProvisioningService {
     private readonly vpnClient: VpnClient,
     @Inject(S3_STORAGE_PROVIDER)
     private readonly storageProvider: S3StorageProvider,
+    private readonly configuratorRuntimeService: ConfiguratorRuntimeService,
     private readonly plansService: PlansService,
     private readonly provisionsService: ProvisionsService,
     private readonly vpnNodesService: VpnNodesService,
@@ -259,6 +261,7 @@ export class ProvisioningService {
           vpn.subscriptionLink,
         );
       }
+      await this.syncConfiguratorSnapshot(provision.id);
       await this.billingProvider.updateServiceStatus(
         event.externalSubscriptionId,
         'active',
@@ -275,6 +278,7 @@ export class ProvisioningService {
         provision,
         error instanceof Error ? error.message : String(error),
       );
+      await this.syncConfiguratorSnapshot(provision.id);
       await this.billingProvider.updateServiceStatus(
         event.externalSubscriptionId,
         'failed',
@@ -347,6 +351,7 @@ export class ProvisioningService {
       );
     }
 
+    await this.syncConfiguratorSnapshot(provision.id);
     await this.billingProvider.updateServiceStatus(
       event.externalSubscriptionId,
       status,
@@ -408,6 +413,7 @@ export class ProvisioningService {
       deletedAt: new Date(),
       error: null,
     });
+    await this.syncConfiguratorSnapshot(provision.id);
   }
 
   private async deleteByEvent(event: BillingEventPayload): Promise<void> {
@@ -496,6 +502,7 @@ export class ProvisioningService {
       );
     }
 
+    await this.syncConfiguratorSnapshot(provision.id);
     await this.billingProvider.updateServiceStatus(
       event.externalSubscriptionId,
       'active',
@@ -536,6 +543,18 @@ export class ProvisioningService {
     }
 
     throw new Error('Billing webhook payload is missing deviceLimit');
+  }
+
+  private async syncConfiguratorSnapshot(provisionId: string): Promise<void> {
+    try {
+      await this.configuratorRuntimeService.syncProvisionSnapshot(provisionId);
+    } catch (error) {
+      this.logger.warn(
+        `Configurator snapshot sync failed for provision ${provisionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private toStorageBackendConfig(

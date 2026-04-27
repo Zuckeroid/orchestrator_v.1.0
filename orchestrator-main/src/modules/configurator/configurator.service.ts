@@ -105,7 +105,9 @@ export class ConfiguratorService {
     provision: ProvisionEntity,
   ): ConfiguratorServiceSummary {
     const sortedConfigs = this.sortDeviceConfigs(provision.deviceConfigs ?? []);
-    const activeConfigs = sortedConfigs.filter((item) => item.status === 'active');
+    const activeConfigs = sortedConfigs.filter(
+      (item) => item.status === 'active' || item.status === 'ready',
+    );
     const latestConfig = sortedConfigs[0];
 
     return {
