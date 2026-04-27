@@ -27,7 +27,8 @@ type TabId =
   | 'storage'
   | 'provisions'
   | 'configurator'
-  | 'app-policies'
+  | 'app-routing'
+  | 'app-automation'
   | 'webhook'
   | 'events'
   | 'audit';
@@ -83,6 +84,7 @@ interface AppPolicyAppFormState {
   packageName: string;
   platform: string;
   category: string;
+  iconUrl: string;
   notes: string;
   isActive: boolean;
 }
@@ -152,6 +154,7 @@ const emptyAppPolicyAppForm: AppPolicyAppFormState = {
   packageName: '',
   platform: 'android',
   category: '',
+  iconUrl: '',
   notes: '',
   isActive: true,
 };
@@ -626,7 +629,8 @@ export function App() {
     { id: 'storage', label: 'Storage Backends' },
     { id: 'provisions', label: 'Provisions' },
     { id: 'configurator', label: 'Configurator' },
-    { id: 'app-policies', label: 'App Policies' },
+    { id: 'app-routing', label: 'App Routing' },
+    { id: 'app-automation', label: 'Auto On/Off' },
     { id: 'events', label: 'Events' },
     { id: 'webhook', label: 'Webhook Tester' },
     { id: 'audit', label: 'Audit' },
@@ -731,8 +735,11 @@ export function App() {
         {activeTab === 'configurator' ? (
           <ConfiguratorPanel refreshVersion={refreshVersion} />
         ) : null}
-        {activeTab === 'app-policies' ? (
-          <AppPoliciesPanel refreshVersion={refreshVersion} />
+        {activeTab === 'app-routing' ? (
+          <AppPoliciesPanel mode="routing" refreshVersion={refreshVersion} />
+        ) : null}
+        {activeTab === 'app-automation' ? (
+          <AppPoliciesPanel mode="automation" refreshVersion={refreshVersion} />
         ) : null}
         {activeTab === 'webhook' ? (
           <WebhookTesterPanel
@@ -2326,7 +2333,13 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
   );
 }
 
-function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
+function AppPoliciesPanel({
+  mode,
+  refreshVersion,
+}: {
+  mode: 'routing' | 'automation';
+  refreshVersion: number;
+}) {
   const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
   const [apps, setApps] = useState<AppPolicyApp[]>([]);
   const [templates, setTemplates] = useState<ConfiguratorPolicyTemplate[]>([]);
@@ -2353,6 +2366,15 @@ function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
   const automationTemplates = templates.filter(
     (template) => template.type === 'automation',
   );
+  const selectedTemplates =
+    mode === 'routing' ? routingTemplates : automationTemplates;
+  const policyTitle = mode === 'routing' ? 'App Routing' : 'Auto On/Off';
+  const profileTitle =
+    mode === 'routing' ? 'Routing profiles' : 'Automation profiles';
+  const profileCountLabel =
+    mode === 'routing'
+      ? `routing: ${routingTemplates.length}`
+      : `automation: ${automationTemplates.length}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -2506,6 +2528,7 @@ function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
       packageName: app.packageName,
       platform: app.platform,
       category: app.category ?? '',
+      iconUrl: app.iconUrl ?? '',
       notes: app.notes ?? '',
       isActive: app.isActive,
     });
@@ -2590,6 +2613,16 @@ function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
             />
           </label>
           <label>
+            Icon URL
+            <input
+              placeholder="https://example.com/icon.png"
+              value={appForm.iconUrl}
+              onChange={(event) =>
+                setAppForm({ ...appForm, iconUrl: event.target.value })
+              }
+            />
+          </label>
+          <label>
             Platform
             <input
               value={appForm.platform}
@@ -2630,6 +2663,7 @@ function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
           </div>
         </form>
 
+        {mode === 'routing' ? (
         <form className="panel form-panel" onSubmit={saveRoutingProfile}>
           <h2>{editingRoutingId ? 'Edit Routing' : 'Routing Profile'}</h2>
           <label>
@@ -2698,7 +2732,9 @@ function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
             ) : null}
           </div>
         </form>
+        ) : null}
 
+        {mode === 'automation' ? (
         <form className="panel form-panel" onSubmit={saveAutomationProfile}>
           <h2>{editingAutomationId ? 'Edit Automation' : 'Automation Profile'}</h2>
           <label>
@@ -2763,15 +2799,15 @@ function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
             ) : null}
           </div>
         </form>
+        ) : null}
       </div>
 
       <section className="panel table-panel">
         <div className="panel-heading">
-          <h2>Application Policies</h2>
+          <h2>{policyTitle}</h2>
           <div className="pill-row">
             <span className="pill">apps: {apps.length}</span>
-            <span className="pill">routing: {routingTemplates.length}</span>
-            <span className="pill">automation: {automationTemplates.length}</span>
+            <span className="pill">{profileCountLabel}</span>
           </div>
         </div>
         {loading ? <p>Loading app policies...</p> : null}
@@ -2784,6 +2820,7 @@ function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
             <table>
               <thead>
                 <tr>
+                  <th></th>
                   <th>Application</th>
                   <th>Package</th>
                   <th>Category</th>
@@ -2794,6 +2831,9 @@ function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
               <tbody>
                 {apps.map((app) => (
                   <tr key={app.id}>
+                    <td className="icon-cell">
+                      <AppIcon app={app} />
+                    </td>
                     <td>
                       <strong>{app.name}</strong>
                       <span className="cell-note">{app.platform}</span>
@@ -2823,25 +2863,35 @@ function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
         </div>
 
         <div className="policy-section">
-          <h3>Routing profiles</h3>
+          <h3>{profileTitle}</h3>
           <PolicyTemplateList
-            templates={routingTemplates}
-            onEdit={editRoutingTemplate}
-            onDelete={deletePolicyTemplate}
-          />
-        </div>
-
-        <div className="policy-section">
-          <h3>Automation profiles</h3>
-          <PolicyTemplateList
-            templates={automationTemplates}
-            onEdit={editAutomationTemplate}
+            templates={selectedTemplates}
+            onEdit={mode === 'routing' ? editRoutingTemplate : editAutomationTemplate}
             onDelete={deletePolicyTemplate}
           />
         </div>
       </section>
     </section>
   );
+}
+
+function AppIcon({ app }: { app: AppPolicyApp }) {
+  const [failed, setFailed] = useState(false);
+  const iconUrl = app.iconUrl?.trim();
+
+  if (iconUrl && !failed) {
+    return (
+      <img
+        alt=""
+        className="app-icon"
+        loading="lazy"
+        src={iconUrl}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return <span className="app-icon app-icon-fallback">{appIconInitials(app.name)}</span>;
 }
 
 function PolicyTemplateList({
@@ -3694,6 +3744,7 @@ function buildAppPolicyAppPayload(form: AppPolicyAppFormState) {
     packageName: form.packageName.trim(),
     platform: form.platform.trim() || 'android',
     category: optionalString(form.category),
+    iconUrl: optionalString(form.iconUrl),
     notes: optionalString(form.notes),
     isActive: form.isActive,
   };
@@ -3784,6 +3835,18 @@ function optionalString(value: string): string | undefined {
   const trimmed = value.trim();
 
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function appIconInitials(name: string): string {
+  const letters = name
+    .split(/\s+/)
+    .map((part) => part.trim().charAt(0))
+    .filter((letter) => letter.length > 0)
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return letters || 'APP';
 }
 
 function formatDate(value?: string | null): string {

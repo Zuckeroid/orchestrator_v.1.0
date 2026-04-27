@@ -31,6 +31,9 @@ export class AppPolicyAppEntity {
   @Column({ type: 'text', nullable: true })
   notes?: string | null;
 
+  @Column({ name: 'icon_url', type: 'text', nullable: true })
+  iconUrl?: string | null;
+
   @Index()
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;

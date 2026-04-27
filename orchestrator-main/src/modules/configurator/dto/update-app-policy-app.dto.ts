@@ -22,6 +22,10 @@ export class UpdateAppPolicyAppDto {
   notes?: string | null;
 
   @IsOptional()
+  @IsString()
+  iconUrl?: string | null;
+
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 }

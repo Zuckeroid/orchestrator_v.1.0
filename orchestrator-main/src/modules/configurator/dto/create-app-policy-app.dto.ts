@@ -20,6 +20,10 @@ export class CreateAppPolicyAppDto {
   notes?: string | null;
 
   @IsOptional()
+  @IsString()
+  iconUrl?: string | null;
+
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 }

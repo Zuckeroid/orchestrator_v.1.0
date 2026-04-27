@@ -360,6 +360,7 @@ export interface AppPolicyApp {
   packageName: string;
   platform: string;
   category?: string | null;
+  iconUrl?: string | null;
   notes?: string | null;
   isActive: boolean;
   createdAt: string;

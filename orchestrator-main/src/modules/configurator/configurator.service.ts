@@ -124,6 +124,7 @@ export class ConfiguratorService {
       packageName,
       platform: this.normalizeOptional(input.platform) ?? 'android',
       category: this.normalizeOptional(input.category),
+      iconUrl: this.normalizeOptional(input.iconUrl),
       notes: this.normalizeOptional(input.notes),
       isActive: input.isActive ?? true,
     });
@@ -150,6 +151,9 @@ export class ConfiguratorService {
     }
     if (input.category !== undefined) {
       app.category = this.normalizeOptional(input.category);
+    }
+    if (input.iconUrl !== undefined) {
+      app.iconUrl = this.normalizeOptional(input.iconUrl);
     }
     if (input.notes !== undefined) {
       app.notes = this.normalizeOptional(input.notes);
@@ -397,6 +401,7 @@ export class ConfiguratorService {
       packageName: app.packageName,
       platform: app.platform,
       category: app.category ?? null,
+      iconUrl: app.iconUrl ?? null,
       notes: app.notes ?? null,
       isActive: app.isActive,
       createdAt: app.createdAt.toISOString(),
@@ -508,6 +513,7 @@ export interface CreateAppPolicyAppInput {
   packageName: string;
   platform?: string;
   category?: string | null;
+  iconUrl?: string | null;
   notes?: string | null;
   isActive?: boolean;
 }
@@ -517,6 +523,7 @@ export interface UpdateAppPolicyAppInput {
   packageName?: string;
   platform?: string;
   category?: string | null;
+  iconUrl?: string | null;
   notes?: string | null;
   isActive?: boolean;
 }
@@ -541,6 +548,7 @@ export interface AppPolicyAppSummary {
   packageName: string;
   platform: string;
   category: string | null;
+  iconUrl: string | null;
   notes: string | null;
   isActive: boolean;
   createdAt: string;
