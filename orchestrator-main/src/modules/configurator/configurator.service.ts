@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DeviceConfigEntity } from '../../database/entities/device-config.entity';
 import { PolicyTemplateEntity } from '../../database/entities/policy-template.entity';
 import { ProvisionEntity } from '../../database/entities/provision.entity';
 import { ProviderAccessEntity } from '../../database/entities/provider-access.entity';
+import {
+  BILLING_PROVIDER,
+} from '../../integrations/billing/billing.module';
+import { BillingProvider } from '../../integrations/billing/billing-provider.interface';
 import { PaginatedResult } from '../processed-events/processed-events.service';
 import { ConfiguratorRuntimeService } from './configurator-runtime.service';
 
@@ -21,6 +25,8 @@ export class ConfiguratorService {
     private readonly provisionsRepository: Repository<ProvisionEntity>,
     @InjectRepository(PolicyTemplateEntity)
     private readonly policyTemplatesRepository: Repository<PolicyTemplateEntity>,
+    @Inject(BILLING_PROVIDER)
+    private readonly billingProvider: BillingProvider,
     private readonly configuratorRuntimeService: ConfiguratorRuntimeService,
   ) {}
 
@@ -104,8 +110,14 @@ export class ConfiguratorService {
   }
 
   async regenerateServiceConfig(id: string): Promise<ConfiguratorServiceDetail> {
-    await this.getExistingProvision(id);
-    await this.configuratorRuntimeService.syncProvisionSnapshot(id);
+    const provision = await this.getExistingProvision(id);
+    const snapshot = await this.configuratorRuntimeService.syncProvisionSnapshot(id);
+    if (snapshot) {
+      await this.billingProvider.updateDeviceConfig(
+        provision.externalSubscriptionId,
+        snapshot,
+      );
+    }
     return this.getServiceById(id);
   }
 

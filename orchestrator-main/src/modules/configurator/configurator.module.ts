@@ -5,12 +5,14 @@ import { DeviceConfigEntity } from '../../database/entities/device-config.entity
 import { PolicyTemplateEntity } from '../../database/entities/policy-template.entity';
 import { ProvisionEntity } from '../../database/entities/provision.entity';
 import { ProviderAccessEntity } from '../../database/entities/provider-access.entity';
+import { BillingModule } from '../../integrations/billing/billing.module';
 import { ConfiguratorController } from './configurator.controller';
 import { ConfiguratorRuntimeService } from './configurator-runtime.service';
 import { ConfiguratorService } from './configurator.service';
 
 @Module({
   imports: [
+    BillingModule,
     TypeOrmModule.forFeature([
       DeviceConfigEntity,
       PolicyTemplateEntity,
