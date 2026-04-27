@@ -2412,6 +2412,21 @@ function AppPoliciesPanel({
     };
   }, [api, refreshVersion, reloadVersion]);
 
+  useEffect(() => {
+    if (mode !== 'automation' || editingAutomationId !== null) {
+      return;
+    }
+
+    const defaultTemplate =
+      templates.find(
+        (template) => template.type === 'automation' && template.isDefault,
+      ) ?? templates.find((template) => template.type === 'automation');
+
+    if (defaultTemplate) {
+      setAutomationTemplateForm(defaultTemplate);
+    }
+  }, [editingAutomationId, mode, templates]);
+
   async function saveApp(event: FormEvent) {
     event.preventDefault();
     await runPolicyAction('Application saved', async () => {
@@ -2550,6 +2565,10 @@ function AppPoliciesPanel({
   }
 
   function editAutomationTemplate(template: ConfiguratorPolicyTemplate) {
+    setAutomationTemplateForm(template);
+  }
+
+  function setAutomationTemplateForm(template: ConfiguratorPolicyTemplate) {
     setEditingAutomationId(template.id);
     setAutomationForm({
       name: template.name,
@@ -2754,6 +2773,10 @@ function AppPoliciesPanel({
         {mode === 'automation' ? (
         <form className="panel form-panel" onSubmit={saveAutomationProfile}>
           <h2>{editingAutomationId ? 'Edit Automation' : 'Automation Profile'}</h2>
+          <p className="muted">
+            App catalog checkboxes below build Auto ON and Auto OFF lists for this
+            profile.
+          </p>
           <label>
             Profile name
             <input
@@ -2763,61 +2786,6 @@ function AppPoliciesPanel({
                 setAutomationForm({ ...automationForm, name: event.target.value })
               }
             />
-          </label>
-          <label>
-            Automation apps
-            <div className="app-toggle-list">
-              <div className="app-toggle-row app-toggle-head">
-                <span>Application</span>
-                <span>Auto ON</span>
-                <span>Auto OFF</span>
-              </div>
-              {apps.map((app) => (
-                <div className="app-toggle-row" key={app.id}>
-                  <span className="app-toggle-name">
-                    <AppIcon app={app} />
-                    <span>
-                      <strong>{app.name}</strong>
-                      <span className="cell-note">{app.packageName}</span>
-                    </span>
-                  </span>
-                  <label className="app-toggle-check">
-                    <input
-                      type="checkbox"
-                      checked={packageTextHas(
-                        automationForm.autoConnectApps,
-                        app.packageName,
-                      )}
-                      disabled={!app.isActive}
-                      onChange={(event) =>
-                        setAutomationPackage(
-                          'autoConnectApps',
-                          app.packageName,
-                          event.target.checked,
-                        )
-                      }
-                    />
-                  </label>
-                  <label className="app-toggle-check">
-                    <input
-                      type="checkbox"
-                      checked={packageTextHas(
-                        automationForm.autoDisconnectApps,
-                        app.packageName,
-                      )}
-                      disabled={!app.isActive}
-                      onChange={(event) =>
-                        setAutomationPackage(
-                          'autoDisconnectApps',
-                          app.packageName,
-                          event.target.checked,
-                        )
-                      }
-                    />
-                  </label>
-                </div>
-              ))}
-            </div>
           </label>
           <details className="manual-package-editor">
             <summary>Advanced package names</summary>
@@ -2899,6 +2867,8 @@ function AppPoliciesPanel({
                   <th>Application</th>
                   <th>Package</th>
                   <th>Category</th>
+                  {mode === 'automation' ? <th>Auto ON</th> : null}
+                  {mode === 'automation' ? <th>Auto OFF</th> : null}
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -2915,6 +2885,48 @@ function AppPoliciesPanel({
                     </td>
                     <td>{app.packageName}</td>
                     <td>{app.category ?? 'none'}</td>
+                    {mode === 'automation' ? (
+                      <td>
+                        <label className="app-policy-check">
+                          <input
+                            type="checkbox"
+                            checked={packageTextHas(
+                              automationForm.autoConnectApps,
+                              app.packageName,
+                            )}
+                            disabled={!app.isActive || saving}
+                            onChange={(event) =>
+                              setAutomationPackage(
+                                'autoConnectApps',
+                                app.packageName,
+                                event.target.checked,
+                              )
+                            }
+                          />
+                        </label>
+                      </td>
+                    ) : null}
+                    {mode === 'automation' ? (
+                      <td>
+                        <label className="app-policy-check">
+                          <input
+                            type="checkbox"
+                            checked={packageTextHas(
+                              automationForm.autoDisconnectApps,
+                              app.packageName,
+                            )}
+                            disabled={!app.isActive || saving}
+                            onChange={(event) =>
+                              setAutomationPackage(
+                                'autoDisconnectApps',
+                                app.packageName,
+                                event.target.checked,
+                              )
+                            }
+                          />
+                        </label>
+                      </td>
+                    ) : null}
                     <td>
                       <span className={`status-pill ${app.isActive ? 'green' : 'slate'}`}>
                         {app.isActive ? 'active' : 'inactive'}
