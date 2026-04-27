@@ -541,6 +541,64 @@ input[type="checkbox"] {
   font-weight: 800;
 }
 
+.app-toggle-list {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: var(--color-panel-bg);
+}
+
+.app-toggle-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 86px 86px;
+  gap: 10px;
+  align-items: center;
+  min-height: 54px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.app-toggle-row:last-child {
+  border-bottom: 0;
+}
+
+.app-toggle-head {
+  min-height: 38px;
+  background: var(--color-panel-muted);
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.app-toggle-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-toggle-name > span:last-child {
+  min-width: 0;
+}
+
+.app-toggle-check {
+  display: flex;
+  justify-content: center;
+}
+
+.manual-package-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.manual-package-editor summary {
+  cursor: pointer;
+  color: var(--color-text-soft);
+  font-weight: 800;
+}
+
 .detail-actions button {
   min-height: 38px;
   white-space: nowrap;

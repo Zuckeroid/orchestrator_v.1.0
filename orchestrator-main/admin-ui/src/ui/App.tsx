@@ -2578,6 +2578,23 @@ function AppPoliciesPanel({
     setAutomationForm(emptyAutomationProfileForm);
   }
 
+  function setAutomationPackage(
+    target: 'autoConnectApps' | 'autoDisconnectApps',
+    packageName: string,
+    enabled: boolean,
+  ) {
+    const opposite =
+      target === 'autoConnectApps' ? 'autoDisconnectApps' : 'autoConnectApps';
+
+    setAutomationForm((current) => ({
+      ...current,
+      [target]: updatePackageText(current[target], packageName, enabled),
+      ...(enabled
+        ? { [opposite]: updatePackageText(current[opposite], packageName, false) }
+        : {}),
+    }));
+  }
+
   return (
     <section className="split-layout app-policies-layout">
       <div className="policy-form-stack">
@@ -2748,33 +2765,91 @@ function AppPoliciesPanel({
             />
           </label>
           <label>
-            Auto-connect packages
-            <textarea
-              rows={5}
-              placeholder="one package per line"
-              value={automationForm.autoConnectApps}
-              onChange={(event) =>
-                setAutomationForm({
-                  ...automationForm,
-                  autoConnectApps: event.target.value,
-                })
-              }
-            />
+            Automation apps
+            <div className="app-toggle-list">
+              <div className="app-toggle-row app-toggle-head">
+                <span>Application</span>
+                <span>Auto ON</span>
+                <span>Auto OFF</span>
+              </div>
+              {apps.map((app) => (
+                <div className="app-toggle-row" key={app.id}>
+                  <span className="app-toggle-name">
+                    <AppIcon app={app} />
+                    <span>
+                      <strong>{app.name}</strong>
+                      <span className="cell-note">{app.packageName}</span>
+                    </span>
+                  </span>
+                  <label className="app-toggle-check">
+                    <input
+                      type="checkbox"
+                      checked={packageTextHas(
+                        automationForm.autoConnectApps,
+                        app.packageName,
+                      )}
+                      disabled={!app.isActive}
+                      onChange={(event) =>
+                        setAutomationPackage(
+                          'autoConnectApps',
+                          app.packageName,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="app-toggle-check">
+                    <input
+                      type="checkbox"
+                      checked={packageTextHas(
+                        automationForm.autoDisconnectApps,
+                        app.packageName,
+                      )}
+                      disabled={!app.isActive}
+                      onChange={(event) =>
+                        setAutomationPackage(
+                          'autoDisconnectApps',
+                          app.packageName,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
           </label>
-          <label>
-            Auto-disconnect packages
-            <textarea
-              rows={4}
-              placeholder="one package per line"
-              value={automationForm.autoDisconnectApps}
-              onChange={(event) =>
-                setAutomationForm({
-                  ...automationForm,
-                  autoDisconnectApps: event.target.value,
-                })
-              }
-            />
-          </label>
+          <details className="manual-package-editor">
+            <summary>Advanced package names</summary>
+            <label>
+              Auto ON package names
+              <textarea
+                rows={4}
+                placeholder="one package per line"
+                value={automationForm.autoConnectApps}
+                onChange={(event) =>
+                  setAutomationForm({
+                    ...automationForm,
+                    autoConnectApps: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              Auto OFF package names
+              <textarea
+                rows={4}
+                placeholder="one package per line"
+                value={automationForm.autoDisconnectApps}
+                onChange={(event) =>
+                  setAutomationForm({
+                    ...automationForm,
+                    autoDisconnectApps: event.target.value,
+                  })
+                }
+              />
+            </label>
+          </details>
           <label className="toggle-row">
             <input
               type="checkbox"
@@ -3777,6 +3852,25 @@ function packageListFromText(value: string): string[] {
         .filter((item) => item.length > 0),
     ),
   );
+}
+
+function packageTextHas(value: string, packageName: string): boolean {
+  return packageListFromText(value).includes(packageName);
+}
+
+function updatePackageText(
+  value: string,
+  packageName: string,
+  enabled: boolean,
+): string {
+  const packages = packageListFromText(value);
+  const filtered = packages.filter((item) => item !== packageName);
+
+  if (enabled) {
+    filtered.push(packageName);
+  }
+
+  return filtered.join('\n');
 }
 
 function packageTextFromPayload(value: unknown): string {
