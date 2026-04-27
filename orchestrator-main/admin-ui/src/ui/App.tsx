@@ -188,7 +188,7 @@ const emptyNodeForm: VpnNodeFormState = {
 
 const PROVISIONS_PAGE_SIZE = 10;
 const CONFIGURATOR_PAGE_SIZE = 10;
-const APP_CATALOG_PAGE_SIZE = 20;
+const APP_CATALOG_PAGE_SIZE = 10;
 const EVENTS_PAGE_SIZE = 10;
 const AUDIT_PAGE_SIZE = 15;
 const PROVISION_STATUSES = [
@@ -2459,6 +2459,20 @@ function AppPoliciesPanel({
     }
   }, [editingAutomationId, mode, templates]);
 
+  useEffect(() => {
+    if (mode !== 'routing' || editingRoutingId !== null) {
+      return;
+    }
+
+    const defaultTemplate =
+      templates.find((template) => template.type === 'routing' && template.isDefault) ??
+      templates.find((template) => template.type === 'routing');
+
+    if (defaultTemplate) {
+      setRoutingTemplateForm(defaultTemplate);
+    }
+  }, [editingRoutingId, mode, templates]);
+
   async function saveApp(event: FormEvent) {
     event.preventDefault();
     await runPolicyAction('Application saved', async () => {
@@ -2474,6 +2488,10 @@ function AppPoliciesPanel({
 
   async function saveRoutingProfile(event: FormEvent) {
     event.preventDefault();
+    await persistRoutingProfile();
+  }
+
+  async function persistRoutingProfile() {
     await runPolicyAction('Routing profile saved', async () => {
       const payload = {
         name: routingForm.name.trim(),
@@ -2493,7 +2511,6 @@ function AppPoliciesPanel({
           payload,
         );
       }
-      resetRoutingForm();
     });
   }
 
@@ -2585,6 +2602,10 @@ function AppPoliciesPanel({
   }
 
   function editRoutingTemplate(template: ConfiguratorPolicyTemplate) {
+    setRoutingTemplateForm(template);
+  }
+
+  function setRoutingTemplateForm(template: ConfiguratorPolicyTemplate) {
     setEditingRoutingId(template.id);
     setRoutingForm({
       name: template.name,
@@ -2641,6 +2662,22 @@ function AppPoliciesPanel({
       target === 'autoConnectApps' ? 'autoDisconnectApps' : 'autoConnectApps';
 
     setAutomationForm((current) => ({
+      ...current,
+      [target]: updatePackageText(current[target], packageName, enabled),
+      ...(enabled
+        ? { [opposite]: updatePackageText(current[opposite], packageName, false) }
+        : {}),
+    }));
+  }
+
+  function setRoutingPackage(
+    target: 'includedApps' | 'excludedApps',
+    packageName: string,
+    enabled: boolean,
+  ) {
+    const opposite = target === 'includedApps' ? 'excludedApps' : 'includedApps';
+
+    setRoutingForm((current) => ({
       ...current,
       [target]: updatePackageText(current[target], packageName, enabled),
       ...(enabled
@@ -2737,6 +2774,9 @@ function AppPoliciesPanel({
         {mode === 'routing' ? (
         <form className="panel form-panel" onSubmit={saveRoutingProfile}>
           <h2>{editingRoutingId ? 'Edit Routing' : 'Routing Profile'}</h2>
+          <p className="muted">
+            Table checkboxes build selected and excluded app lists for this profile.
+          </p>
           <label>
             Profile name
             <input
@@ -2760,28 +2800,31 @@ function AppPoliciesPanel({
               <option value="all_apps">All apps</option>
             </select>
           </label>
-          <label>
-            Included packages
-            <textarea
-              rows={5}
-              placeholder="one package per line"
-              value={routingForm.includedApps}
-              onChange={(event) =>
-                setRoutingForm({ ...routingForm, includedApps: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Excluded packages
-            <textarea
-              rows={4}
-              placeholder="one package per line"
-              value={routingForm.excludedApps}
-              onChange={(event) =>
-                setRoutingForm({ ...routingForm, excludedApps: event.target.value })
-              }
-            />
-          </label>
+          <details className="manual-package-editor">
+            <summary>Advanced package names</summary>
+            <label>
+              Selected package names
+              <textarea
+                rows={5}
+                placeholder="one package per line"
+                value={routingForm.includedApps}
+                onChange={(event) =>
+                  setRoutingForm({ ...routingForm, includedApps: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Excluded package names
+              <textarea
+                rows={4}
+                placeholder="one package per line"
+                value={routingForm.excludedApps}
+                onChange={(event) =>
+                  setRoutingForm({ ...routingForm, excludedApps: event.target.value })
+                }
+              />
+            </label>
+          </details>
           <label className="toggle-row">
             <input
               type="checkbox"
@@ -2917,6 +2960,16 @@ function AppPoliciesPanel({
                 Save Auto On/Off
               </button>
             ) : null}
+            {mode === 'routing' ? (
+              <button
+                className="primary"
+                type="button"
+                disabled={saving}
+                onClick={() => void persistRoutingProfile()}
+              >
+                Save Routing
+              </button>
+            ) : null}
           </div>
           <div className="table-wrap">
             <table>
@@ -2926,6 +2979,8 @@ function AppPoliciesPanel({
                   <th>Application</th>
                   <th>Package</th>
                   <th>Category</th>
+                  {mode === 'routing' ? <th>Selected</th> : null}
+                  {mode === 'routing' ? <th>Excluded</th> : null}
                   {mode === 'automation' ? <th>Auto ON</th> : null}
                   {mode === 'automation' ? <th>Auto OFF</th> : null}
                   <th>Status</th>
@@ -2944,6 +2999,48 @@ function AppPoliciesPanel({
                     </td>
                     <td>{app.packageName}</td>
                     <td>{app.category ?? 'none'}</td>
+                    {mode === 'routing' ? (
+                      <td>
+                        <label className="app-policy-check">
+                          <input
+                            type="checkbox"
+                            checked={packageTextHas(
+                              routingForm.includedApps,
+                              app.packageName,
+                            )}
+                            disabled={!app.isActive || saving}
+                            onChange={(event) =>
+                              setRoutingPackage(
+                                'includedApps',
+                                app.packageName,
+                                event.target.checked,
+                              )
+                            }
+                          />
+                        </label>
+                      </td>
+                    ) : null}
+                    {mode === 'routing' ? (
+                      <td>
+                        <label className="app-policy-check">
+                          <input
+                            type="checkbox"
+                            checked={packageTextHas(
+                              routingForm.excludedApps,
+                              app.packageName,
+                            )}
+                            disabled={!app.isActive || saving}
+                            onChange={(event) =>
+                              setRoutingPackage(
+                                'excludedApps',
+                                app.packageName,
+                                event.target.checked,
+                              )
+                            }
+                          />
+                        </label>
+                      </td>
+                    ) : null}
                     {mode === 'automation' ? (
                       <td>
                         <label className="app-policy-check">
@@ -3041,6 +3138,18 @@ function AppPoliciesPanel({
             />
           ) : (
             <RoutingTemplateList
+              activeForm={
+                editingRoutingId
+                  ? {
+                      id: editingRoutingId,
+                      name: routingForm.name,
+                      mode: routingForm.mode,
+                      isDefault: routingForm.isDefault,
+                      includedApps: packageListFromText(routingForm.includedApps),
+                      excludedApps: packageListFromText(routingForm.excludedApps),
+                    }
+                  : null
+              }
               apps={apps}
               templates={selectedTemplates}
               onEdit={editRoutingTemplate}
@@ -3182,11 +3291,20 @@ function PackageChipList({
 function RoutingTemplateList({
   templates,
   apps,
+  activeForm,
   onEdit,
   onDelete,
 }: {
   templates: ConfiguratorPolicyTemplate[];
   apps: AppPolicyApp[];
+  activeForm: {
+    id: string;
+    name: string;
+    mode: string;
+    isDefault: boolean;
+    includedApps: string[];
+    excludedApps: string[];
+  } | null;
   onEdit: (template: ConfiguratorPolicyTemplate) => void;
   onDelete: (template: ConfiguratorPolicyTemplate) => void;
 }) {
@@ -3197,21 +3315,32 @@ function RoutingTemplateList({
   return (
     <div className="configurator-template-list">
       {templates.map((template) => {
-        const includedApps = packageListFromPayload(
-          template.payload.includedApps ?? template.payload.default_enabled_apps,
-        );
-        const excludedApps = packageListFromPayload(
-          template.payload.excludedApps ?? template.payload.default_excluded_apps,
-        );
-        const mode = policyPayloadString(template.payload, 'mode', 'selected_apps');
+        const isActiveTemplate = activeForm?.id === template.id;
+        const includedApps = isActiveTemplate
+          ? activeForm.includedApps
+          : packageListFromPayload(
+              template.payload.includedApps ?? template.payload.default_enabled_apps,
+            );
+        const excludedApps = isActiveTemplate
+          ? activeForm.excludedApps
+          : packageListFromPayload(
+              template.payload.excludedApps ??
+                template.payload.default_excluded_apps,
+            );
+        const mode = isActiveTemplate
+          ? activeForm.mode
+          : policyPayloadString(template.payload, 'mode', 'selected_apps');
+        const name = isActiveTemplate ? activeForm.name : template.name;
+        const isDefault = isActiveTemplate ? activeForm.isDefault : template.isDefault;
 
         return (
           <div className="configurator-template-item" key={template.id}>
             <div className="automation-template-body">
-              <strong>{template.name}</strong>
+              <strong>{name}</strong>
               <span className="cell-note">
-                {template.isDefault ? 'default' : 'custom'} / mode {mode} /
-                updated {formatDate(template.updatedAt)}
+                {isDefault ? 'default' : 'custom'} / mode {mode} / updated{' '}
+                {formatDate(template.updatedAt)}
+                {isActiveTemplate ? ' / editing preview' : ''}
               </span>
               <div className="automation-template-grid">
                 <div className="automation-template-bucket">
