@@ -502,7 +502,7 @@ export class ConfiguratorRuntimeService {
 
     for (const deviceConfig of deviceConfigs) {
       const deviceSnapshot = await this.syncDeviceSnapshot(provisionId, {
-        deviceId: deviceConfig.deviceId ?? undefined,
+        deviceId: deviceConfig.deviceId ?? '',
         orderId: deviceConfig.orderId ?? provision.externalOrderId ?? undefined,
         clientId: deviceConfig.clientId ?? provision.externalUserId ?? undefined,
         installId: deviceConfig.installId ?? undefined,
