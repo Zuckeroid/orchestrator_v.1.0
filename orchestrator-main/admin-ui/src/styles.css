@@ -986,6 +986,14 @@ td {
   margin-top: 0;
 }
 
+.policy-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .provider-link-button {
   display: inline-flex;
   align-items: center;

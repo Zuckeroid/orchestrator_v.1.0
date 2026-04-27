@@ -188,6 +188,7 @@ const emptyNodeForm: VpnNodeFormState = {
 
 const PROVISIONS_PAGE_SIZE = 10;
 const CONFIGURATOR_PAGE_SIZE = 10;
+const APP_CATALOG_PAGE_SIZE = 20;
 const EVENTS_PAGE_SIZE = 10;
 const AUDIT_PAGE_SIZE = 15;
 const PROVISION_STATUSES = [
@@ -2361,6 +2362,8 @@ function AppPoliciesPanel({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [appCategoryFilter, setAppCategoryFilter] = useState('all');
+  const [appPage, setAppPage] = useState(1);
 
   const routingTemplates = templates.filter((template) => template.type === 'routing');
   const automationTemplates = templates.filter(
@@ -2375,6 +2378,25 @@ function AppPoliciesPanel({
     mode === 'routing'
       ? `routing: ${routingTemplates.length}`
       : `automation: ${automationTemplates.length}`;
+  const appCategories = uniqueValues(
+    apps.map((app) => app.category ?? 'uncategorized'),
+  );
+  const filteredApps =
+    appCategoryFilter === 'all'
+      ? apps
+      : apps.filter(
+          (app) => (app.category ?? 'uncategorized') === appCategoryFilter,
+        );
+  const totalAppPages = Math.max(
+    Math.ceil(filteredApps.length / APP_CATALOG_PAGE_SIZE),
+    1,
+  );
+  const currentAppPage = Math.min(appPage, totalAppPages);
+  const visibleApps = paginate(
+    filteredApps,
+    currentAppPage,
+    APP_CATALOG_PAGE_SIZE,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -2411,6 +2433,16 @@ function AppPoliciesPanel({
       cancelled = true;
     };
   }, [api, refreshVersion, reloadVersion]);
+
+  useEffect(() => {
+    setAppPage(1);
+  }, [appCategoryFilter, mode]);
+
+  useEffect(() => {
+    if (appPage > totalAppPages) {
+      setAppPage(totalAppPages);
+    }
+  }, [appPage, totalAppPages]);
 
   useEffect(() => {
     if (mode !== 'automation' || editingAutomationId !== null) {
@@ -2467,6 +2499,10 @@ function AppPoliciesPanel({
 
   async function saveAutomationProfile(event: FormEvent) {
     event.preventDefault();
+    await persistAutomationProfile();
+  }
+
+  async function persistAutomationProfile() {
     await runPolicyAction('Automation profile saved', async () => {
       const payload = {
         name: automationForm.name.trim(),
@@ -2486,7 +2522,6 @@ function AppPoliciesPanel({
           payload,
         );
       }
-      resetAutomationForm();
     });
   }
 
@@ -2774,8 +2809,7 @@ function AppPoliciesPanel({
         <form className="panel form-panel" onSubmit={saveAutomationProfile}>
           <h2>{editingAutomationId ? 'Edit Automation' : 'Automation Profile'}</h2>
           <p className="muted">
-            App catalog checkboxes below build Auto ON and Auto OFF lists for this
-            profile.
+            Table checkboxes build Auto ON and Auto OFF lists for this profile.
           </p>
           <label>
             Profile name
@@ -2858,7 +2892,32 @@ function AppPoliciesPanel({
         {message ? <div className="success-line">{message}</div> : null}
 
         <div className="policy-section">
-          <h3>App catalog</h3>
+          <div className="policy-toolbar">
+            <label className="inline-filter">
+              Category
+              <select
+                value={appCategoryFilter}
+                onChange={(event) => setAppCategoryFilter(event.target.value)}
+              >
+                <option value="all">All</option>
+                {appCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {mode === 'automation' ? (
+              <button
+                className="primary"
+                type="button"
+                disabled={saving}
+                onClick={() => void persistAutomationProfile()}
+              >
+                Save Auto On/Off
+              </button>
+            ) : null}
+          </div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -2874,7 +2933,7 @@ function AppPoliciesPanel({
                 </tr>
               </thead>
               <tbody>
-                {apps.map((app) => (
+                {visibleApps.map((app) => (
                   <tr key={app.id}>
                     <td className="icon-cell">
                       <AppIcon app={app} />
@@ -2947,6 +3006,13 @@ function AppPoliciesPanel({
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            page={currentAppPage}
+            totalPages={totalAppPages}
+            totalItems={filteredApps.length}
+            pageSize={APP_CATALOG_PAGE_SIZE}
+            onPageChange={setAppPage}
+          />
         </div>
 
         <div className="policy-section">
@@ -2954,12 +3020,28 @@ function AppPoliciesPanel({
           {mode === 'automation' ? (
             <AutomationTemplateList
               apps={apps}
+              activeForm={
+                editingAutomationId
+                  ? {
+                      id: editingAutomationId,
+                      name: automationForm.name,
+                      isDefault: automationForm.isDefault,
+                      autoConnectApps: packageListFromText(
+                        automationForm.autoConnectApps,
+                      ),
+                      autoDisconnectApps: packageListFromText(
+                        automationForm.autoDisconnectApps,
+                      ),
+                    }
+                  : null
+              }
               templates={automationTemplates}
               onEdit={editAutomationTemplate}
               onDelete={deletePolicyTemplate}
             />
           ) : (
-            <PolicyTemplateList
+            <RoutingTemplateList
+              apps={apps}
               templates={selectedTemplates}
               onEdit={editRoutingTemplate}
               onDelete={deletePolicyTemplate}
@@ -2993,11 +3075,19 @@ function AppIcon({ app }: { app: AppPolicyApp }) {
 function AutomationTemplateList({
   templates,
   apps,
+  activeForm,
   onEdit,
   onDelete,
 }: {
   templates: ConfiguratorPolicyTemplate[];
   apps: AppPolicyApp[];
+  activeForm: {
+    id: string;
+    name: string;
+    isDefault: boolean;
+    autoConnectApps: string[];
+    autoDisconnectApps: string[];
+  } | null;
   onEdit: (template: ConfiguratorPolicyTemplate) => void;
   onDelete: (template: ConfiguratorPolicyTemplate) => void;
 }) {
@@ -3008,21 +3098,29 @@ function AutomationTemplateList({
   return (
     <div className="configurator-template-list">
       {templates.map((template) => {
-        const autoOnApps = packageListFromPayload(
-          template.payload.autoConnectApps ?? template.payload.auto_enable_apps,
-        );
-        const autoOffApps = packageListFromPayload(
-          template.payload.autoDisconnectApps ??
-            template.payload.auto_disable_apps,
-        );
+        const isActiveTemplate = activeForm?.id === template.id;
+        const autoOnApps = isActiveTemplate
+          ? activeForm.autoConnectApps
+          : packageListFromPayload(
+              template.payload.autoConnectApps ?? template.payload.auto_enable_apps,
+            );
+        const autoOffApps = isActiveTemplate
+          ? activeForm.autoDisconnectApps
+          : packageListFromPayload(
+              template.payload.autoDisconnectApps ??
+                template.payload.auto_disable_apps,
+            );
+        const templateName = isActiveTemplate ? activeForm.name : template.name;
+        const isDefault = isActiveTemplate ? activeForm.isDefault : template.isDefault;
 
         return (
           <div className="configurator-template-item" key={template.id}>
             <div className="automation-template-body">
-              <strong>{automationTemplateName(template.name)}</strong>
+              <strong>{automationTemplateName(templateName)}</strong>
               <span className="cell-note">
-                {template.isDefault ? 'default' : 'custom'} / updated{' '}
+                {isDefault ? 'default' : 'custom'} / updated{' '}
                 {formatDate(template.updatedAt)}
+                {isActiveTemplate ? ' / editing preview' : ''}
               </span>
               <div className="automation-template-grid">
                 <div className="automation-template-bucket">
@@ -3075,6 +3173,66 @@ function PackageChipList({
               {app ? <span>{packageName}</span> : null}
             </span>
           </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function RoutingTemplateList({
+  templates,
+  apps,
+  onEdit,
+  onDelete,
+}: {
+  templates: ConfiguratorPolicyTemplate[];
+  apps: AppPolicyApp[];
+  onEdit: (template: ConfiguratorPolicyTemplate) => void;
+  onDelete: (template: ConfiguratorPolicyTemplate) => void;
+}) {
+  if (templates.length === 0) {
+    return <p className="muted">No routing profiles yet.</p>;
+  }
+
+  return (
+    <div className="configurator-template-list">
+      {templates.map((template) => {
+        const includedApps = packageListFromPayload(
+          template.payload.includedApps ?? template.payload.default_enabled_apps,
+        );
+        const excludedApps = packageListFromPayload(
+          template.payload.excludedApps ?? template.payload.default_excluded_apps,
+        );
+        const mode = policyPayloadString(template.payload, 'mode', 'selected_apps');
+
+        return (
+          <div className="configurator-template-item" key={template.id}>
+            <div className="automation-template-body">
+              <strong>{template.name}</strong>
+              <span className="cell-note">
+                {template.isDefault ? 'default' : 'custom'} / mode {mode} /
+                updated {formatDate(template.updatedAt)}
+              </span>
+              <div className="automation-template-grid">
+                <div className="automation-template-bucket">
+                  <h4>Default selected apps</h4>
+                  <PackageChipList apps={apps} packages={includedApps} />
+                </div>
+                <div className="automation-template-bucket">
+                  <h4>Excluded apps</h4>
+                  <PackageChipList apps={apps} packages={excludedApps} />
+                </div>
+              </div>
+            </div>
+            <div className="row-actions">
+              <button type="button" onClick={() => onEdit(template)}>
+                Edit
+              </button>
+              <button type="button" onClick={() => onDelete(template)}>
+                Delete
+              </button>
+            </div>
+          </div>
         );
       })}
     </div>
