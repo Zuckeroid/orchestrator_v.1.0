@@ -550,12 +550,12 @@ export class ConfiguratorRuntimeService {
       },
       inbounds: [
         {
-          tag: 'socks-in',
-          listen: '127.0.0.1',
-          port: 10808,
-          protocol: 'socks',
+          tag: 'tun-in',
+          port: 0,
+          protocol: 'tun',
           settings: {
-            udp: true,
+            name: 'xray0',
+            MTU: 1500,
           },
         },
       ],
