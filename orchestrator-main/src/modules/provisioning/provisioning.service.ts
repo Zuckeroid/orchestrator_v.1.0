@@ -7,7 +7,10 @@ import { VpnNodeEntity } from '../../database/entities/vpn-node.entity';
 import {
   BILLING_PROVIDER,
 } from '../../integrations/billing/billing.module';
-import { BillingProvider } from '../../integrations/billing/billing-provider.interface';
+import {
+  BillingConfigSnapshot,
+  BillingProvider,
+} from '../../integrations/billing/billing-provider.interface';
 import {
   S3StorageProvider,
   StorageAccessResult,
@@ -255,13 +258,13 @@ export class ProvisioningService {
         `Provisioned ${event.externalSubscriptionId}: vpn=${vpn?.login ?? 'disabled'}, bucket=${storage?.bucket ?? 'disabled'}`,
       );
 
-      if (vpn?.subscriptionLink) {
-        await this.billingProvider.updateSubscriptionLink(
+      const configSnapshot = await this.syncConfiguratorSnapshot(provision.id);
+      if (configSnapshot) {
+        await this.billingProvider.updateDeviceConfig(
           event.externalSubscriptionId,
-          vpn.subscriptionLink,
+          configSnapshot,
         );
       }
-      await this.syncConfiguratorSnapshot(provision.id);
       await this.billingProvider.updateServiceStatus(
         event.externalSubscriptionId,
         'active',
@@ -278,7 +281,13 @@ export class ProvisioningService {
         provision,
         error instanceof Error ? error.message : String(error),
       );
-      await this.syncConfiguratorSnapshot(provision.id);
+      const configSnapshot = await this.syncConfiguratorSnapshot(provision.id);
+      if (configSnapshot) {
+        await this.billingProvider.updateDeviceConfig(
+          event.externalSubscriptionId,
+          configSnapshot,
+        );
+      }
       await this.billingProvider.updateServiceStatus(
         event.externalSubscriptionId,
         'failed',
@@ -351,7 +360,13 @@ export class ProvisioningService {
       );
     }
 
-    await this.syncConfiguratorSnapshot(provision.id);
+    const configSnapshot = await this.syncConfiguratorSnapshot(provision.id);
+    if (configSnapshot) {
+      await this.billingProvider.updateDeviceConfig(
+        event.externalSubscriptionId,
+        configSnapshot,
+      );
+    }
     await this.billingProvider.updateServiceStatus(
       event.externalSubscriptionId,
       status,
@@ -413,7 +428,13 @@ export class ProvisioningService {
       deletedAt: new Date(),
       error: null,
     });
-    await this.syncConfiguratorSnapshot(provision.id);
+    const configSnapshot = await this.syncConfiguratorSnapshot(provision.id);
+    if (configSnapshot) {
+      await this.billingProvider.updateDeviceConfig(
+        provision.externalSubscriptionId,
+        configSnapshot,
+      );
+    }
   }
 
   private async deleteByEvent(event: BillingEventPayload): Promise<void> {
@@ -502,7 +523,13 @@ export class ProvisioningService {
       );
     }
 
-    await this.syncConfiguratorSnapshot(provision.id);
+    const configSnapshot = await this.syncConfiguratorSnapshot(provision.id);
+    if (configSnapshot) {
+      await this.billingProvider.updateDeviceConfig(
+        event.externalSubscriptionId,
+        configSnapshot,
+      );
+    }
     await this.billingProvider.updateServiceStatus(
       event.externalSubscriptionId,
       'active',
@@ -545,15 +572,20 @@ export class ProvisioningService {
     throw new Error('Billing webhook payload is missing deviceLimit');
   }
 
-  private async syncConfiguratorSnapshot(provisionId: string): Promise<void> {
+  private async syncConfiguratorSnapshot(
+    provisionId: string,
+  ): Promise<BillingConfigSnapshot | null> {
     try {
-      await this.configuratorRuntimeService.syncProvisionSnapshot(provisionId);
+      return await this.configuratorRuntimeService.syncProvisionSnapshot(
+        provisionId,
+      );
     } catch (error) {
       this.logger.warn(
         `Configurator snapshot sync failed for provision ${provisionId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      return null;
     }
   }
 

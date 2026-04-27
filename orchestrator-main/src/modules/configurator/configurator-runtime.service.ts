@@ -4,6 +4,7 @@ import axios from 'axios';
 import { createHash } from 'crypto';
 import { Agent as HttpsAgent } from 'https';
 import { Repository } from 'typeorm';
+import { BillingConfigSnapshot } from '../../integrations/billing/billing-provider.interface';
 import {
   DeviceConfigEntity,
   DeviceConfigStatus,
@@ -30,7 +31,7 @@ export class ConfiguratorRuntimeService {
     private readonly providerAccessesRepository: Repository<ProviderAccessEntity>,
   ) {}
 
-  async syncProvisionSnapshot(provisionId: string): Promise<void> {
+  async syncProvisionSnapshot(provisionId: string): Promise<BillingConfigSnapshot | null> {
     const provision = await this.provisionsRepository.findOne({
       where: { id: provisionId },
       relations: {
@@ -44,7 +45,7 @@ export class ConfiguratorRuntimeService {
 
     if (!provision) {
       this.logger.warn(`Configurator snapshot skipped for missing provision ${provisionId}`);
-      return;
+      return null;
     }
 
     const deviceConfig = await this.getOrCreateServiceConfig(provision);
@@ -76,7 +77,14 @@ export class ConfiguratorRuntimeService {
         lastSyncedAt: now,
         providerMetadataJson: this.buildProviderMetadata(provision, null),
       });
-      return;
+      return this.buildBillingSnapshot(provision, {
+        ready: false,
+        runtimeType: deviceConfig.runtimeType ?? null,
+        protocol: deviceConfig.protocol ?? null,
+        configRevision: deviceConfig.configRevision ?? null,
+        runtimePayload: null,
+        generatedAt: deviceConfig.generatedAt?.toISOString() ?? null,
+      });
     }
 
     if (provision.status !== 'active') {
@@ -98,7 +106,14 @@ export class ConfiguratorRuntimeService {
         lastSyncedAt: now,
         providerMetadataJson: this.buildProviderMetadata(provision, null),
       });
-      return;
+      return this.buildBillingSnapshot(provision, {
+        ready: false,
+        runtimeType: deviceConfig.runtimeType ?? null,
+        protocol: deviceConfig.protocol ?? null,
+        configRevision: deviceConfig.configRevision ?? null,
+        runtimePayload: null,
+        generatedAt: deviceConfig.generatedAt?.toISOString() ?? null,
+      });
     }
 
     try {
@@ -135,6 +150,14 @@ export class ConfiguratorRuntimeService {
           protocol: runtime.protocol,
         }),
       });
+      return this.buildBillingSnapshot(provision, {
+        ready: true,
+        runtimeType: 'xray_config',
+        protocol: runtime.protocol,
+        configRevision: revision,
+        runtimePayload: runtime.payload,
+        generatedAt: now.toISOString(),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
@@ -158,6 +181,14 @@ export class ConfiguratorRuntimeService {
         status: 'failed',
         lastSyncedAt: now,
         providerMetadataJson: this.buildProviderMetadata(provision, null),
+      });
+      return this.buildBillingSnapshot(provision, {
+        ready: false,
+        runtimeType: deviceConfig.runtimeType ?? null,
+        protocol: deviceConfig.protocol ?? null,
+        configRevision: deviceConfig.configRevision ?? null,
+        runtimePayload: null,
+        generatedAt: deviceConfig.generatedAt?.toISOString() ?? null,
       });
     }
   }
@@ -763,6 +794,32 @@ export class ConfiguratorRuntimeService {
       .slice(0, 12);
 
     return `rev_${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}_${hash}`;
+  }
+
+  private buildBillingSnapshot(
+    provision: ProvisionEntity,
+    payload: {
+      ready: boolean;
+      runtimeType: string | null;
+      protocol: string | null;
+      configRevision: string | null;
+      runtimePayload: string | null;
+      generatedAt: string | null;
+    },
+  ): BillingConfigSnapshot {
+    return {
+      ready: payload.ready,
+      runtimeType: payload.runtimeType,
+      protocol: payload.protocol,
+      configRevision: payload.configRevision,
+      runtimePayload: payload.runtimePayload,
+      nodeId: provision.vpnNodeId ?? null,
+      nodeLabel: provision.vpnNode?.name ?? provision.vpnNode?.host ?? null,
+      nodeCountry: provision.vpnNode?.country ?? null,
+      nodeHost: provision.vpnNode?.host ?? null,
+      sourceSubscriptionLink: provision.subscriptionLink ?? null,
+      generatedAt: payload.generatedAt,
+    };
   }
 
   private queryMap(searchParams: URLSearchParams): Record<string, string> {

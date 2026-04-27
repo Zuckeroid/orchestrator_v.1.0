@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BillingProvider } from '../billing-provider.interface';
+import {
+  BillingConfigSnapshot,
+  BillingProvider,
+} from '../billing-provider.interface';
 import { BillingEventPayload } from '../../../common/types/billing-event.type';
 
 @Injectable()
@@ -20,12 +23,12 @@ export class NoopBillingProvider implements BillingProvider {
     );
   }
 
-  async updateSubscriptionLink(
+  async updateDeviceConfig(
     externalSubscriptionId: string,
-    subscriptionLink: string,
+    snapshot: BillingConfigSnapshot,
   ): Promise<void> {
     this.logger.log(
-      `Billing subscription link update: ${externalSubscriptionId} -> ${subscriptionLink}`,
+      `Billing config snapshot update: ${externalSubscriptionId} -> ready=${snapshot.ready}, revision=${snapshot.configRevision ?? 'none'}`,
     );
   }
 

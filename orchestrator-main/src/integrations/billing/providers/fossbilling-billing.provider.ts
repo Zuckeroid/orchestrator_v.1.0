@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
-import { BillingProvider } from '../billing-provider.interface';
+import {
+  BillingConfigSnapshot,
+  BillingProvider,
+} from '../billing-provider.interface';
 import { BillingEventPayload } from '../../../common/types/billing-event.type';
 
 @Injectable()
@@ -37,13 +40,26 @@ export class FossbillingBillingProvider implements BillingProvider {
     });
   }
 
-  async updateSubscriptionLink(
+  async updateDeviceConfig(
     externalSubscriptionId: string,
-    subscriptionLink: string,
+    snapshot: BillingConfigSnapshot,
   ): Promise<void> {
-    await this.post('/api/guest/orchestrator/update_subscription', {
+    await this.post('/api/guest/orchestrator/update_device_config', {
       external_subscription_id: externalSubscriptionId,
-      subscription_link: subscriptionLink,
+      config_snapshot: {
+        ready: snapshot.ready,
+        runtime_type: snapshot.runtimeType ?? null,
+        protocol: snapshot.protocol ?? null,
+        config_revision: snapshot.configRevision ?? null,
+        runtime_payload: snapshot.runtimePayload ?? null,
+        xray_config: snapshot.runtimePayload ?? null,
+        node_id: snapshot.nodeId ?? null,
+        node_label: snapshot.nodeLabel ?? null,
+        node_country: snapshot.nodeCountry ?? null,
+        node_host: snapshot.nodeHost ?? null,
+        source_subscription_link: snapshot.sourceSubscriptionLink ?? null,
+        generated_at: snapshot.generatedAt ?? null,
+      },
     });
   }
 
@@ -51,7 +67,7 @@ export class FossbillingBillingProvider implements BillingProvider {
     this.logger.log('FOSSBilling plan sync is not implemented yet');
   }
 
-  private async post(path: string, body: Record<string, string>): Promise<void> {
+  private async post(path: string, body: Record<string, unknown>): Promise<void> {
     try {
       await this.httpClient.post(path, body);
     } catch (error) {
