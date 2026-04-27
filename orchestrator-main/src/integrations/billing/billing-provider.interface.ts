@@ -6,11 +6,14 @@ export interface BillingConfigSnapshot {
   protocol?: string | null;
   configRevision?: string | null;
   runtimePayload?: string | null;
+  deviceId?: string | null;
+  deviceName?: string | null;
+  platform?: string | null;
+  installId?: string | null;
   nodeId?: string | null;
   nodeLabel?: string | null;
   nodeCountry?: string | null;
   nodeHost?: string | null;
-  sourceSubscriptionLink?: string | null;
   generatedAt?: string | null;
 }
 

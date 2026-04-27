@@ -19,7 +19,6 @@ import {
 import { S3_STORAGE_PROVIDER } from '../../integrations/storage/storage.module';
 import {
   VpnClient,
-  VpnClientResult,
   VpnNodeConfig,
 } from '../../integrations/vpn/vpn-client.interface';
 import { VPN_CLIENT } from '../../integrations/vpn/vpn.module';
@@ -64,6 +63,12 @@ export class ProvisioningService {
         return;
       case 'subscription_delete':
         await this.deleteByEvent(event);
+        return;
+      case 'device_activated':
+        await this.activateDevice(event);
+        return;
+      case 'device_revoked':
+        await this.revokeDevice(event);
         return;
       default:
         this.assertNever(event.event);
@@ -117,8 +122,6 @@ export class ProvisioningService {
 
     const provision = await this.provisionsService.getOrCreateFromEvent(event);
     let newVpnNode: VpnNodeEntity | undefined;
-    let vpn: VpnClientResult | undefined;
-    let vpnLoadIncremented = false;
     let newStorageBackend: StorageBackendEntity | undefined;
     let storage: StorageAccessResult | undefined;
     let storageLoadIncremented = false;
@@ -136,7 +139,6 @@ export class ProvisioningService {
       await this.provisionsService.markProvisioning(provision);
       const serviceExpiresAt =
         this.parseServiceExpiresAt(event) ?? provision.serviceExpiresAt ?? undefined;
-      const vpnLimitIp = this.requireBillingDeviceLimit(event);
 
       if (plan.vpnEnabled) {
         const vpnNode = provision.vpnNodeId
@@ -145,42 +147,6 @@ export class ProvisioningService {
             ? undefined
             : await this.vpnNodesService.selectLeastLoaded();
         newVpnNode = provision.vpnNodeId ? undefined : vpnNode;
-
-        const nodeConfig = vpnNode
-          ? this.toVpnNodeConfig(vpnNode)
-          : this.getTestModeVpnNodeConfig();
-        if (provision.vpnLogin && provision.subscriptionLink) {
-          await this.vpnClient.updateClient(nodeConfig, provision.vpnLogin, {
-            email: event.email,
-            externalSubscriptionId: event.externalSubscriptionId,
-            limitIp: vpnLimitIp,
-            expiresAt: serviceExpiresAt,
-            enable: true,
-          });
-          vpn = {
-            login: provision.vpnLogin,
-            password: provision.vpnPassword ?? undefined,
-            subscriptionLink: provision.subscriptionLink,
-          };
-        } else {
-          vpn = await this.vpnClient.createClient(nodeConfig, {
-            email: event.email,
-            externalSubscriptionId: event.externalSubscriptionId,
-            limitIp: vpnLimitIp,
-            expiresAt: serviceExpiresAt,
-          });
-        }
-
-        if (newVpnNode && !provision.vpnLogin) {
-          const loadIncremented = await this.vpnNodesService.incrementLoad(
-            newVpnNode.id,
-          );
-          if (!loadIncremented) {
-            await this.vpnClient.deleteClient(nodeConfig, vpn.login);
-            throw new Error('VPN node capacity was exhausted concurrently');
-          }
-          vpnLoadIncremented = true;
-        }
       }
 
       if (plan.storageEnabled) {
@@ -243,10 +209,9 @@ export class ProvisioningService {
         lastExternalPaymentId: event.externalPaymentId,
         serviceExpiresAt,
         vpnNodeId: provision.vpnNodeId ?? newVpnNode?.id ?? null,
-        vpnLogin: vpn?.login ?? provision.vpnLogin ?? null,
-        vpnPassword: vpn?.password ?? provision.vpnPassword ?? null,
-        subscriptionLink:
-          vpn?.subscriptionLink ?? provision.subscriptionLink ?? null,
+        vpnLogin: null,
+        vpnPassword: null,
+        subscriptionLink: null,
         storageBackendId:
           provision.storageBackendId ?? newStorageBackend?.id ?? null,
         storageBucket: storage?.bucket ?? provision.storageBucket ?? null,
@@ -255,7 +220,7 @@ export class ProvisioningService {
       });
 
       this.logger.log(
-        `Provisioned ${event.externalSubscriptionId}: vpn=${vpn?.login ?? 'disabled'}, bucket=${storage?.bucket ?? 'disabled'}`,
+        `Provisioned ${event.externalSubscriptionId}: vpn=${plan.vpnEnabled ? 'device-scoped' : 'disabled'}, bucket=${storage?.bucket ?? 'disabled'}`,
       );
 
       const configSnapshot = await this.syncConfiguratorSnapshot(provision.id);
@@ -270,9 +235,6 @@ export class ProvisioningService {
         'active',
       );
     } catch (error) {
-      if (newVpnNode && vpnLoadIncremented) {
-        await this.vpnNodesService.decrementLoad(newVpnNode.id);
-      }
       if (newStorageBackend && storageLoadIncremented) {
         await this.storageBackendsService.decrementLoad(newStorageBackend.id);
       }
@@ -326,6 +288,11 @@ export class ProvisioningService {
 
     const shouldReleaseCapacity = provision.status === 'active';
 
+    await this.configuratorRuntimeService.revokeProvisionDeviceAccesses(
+      provision.id,
+      'revoked',
+    );
+
     if (provision.vpnNodeId && provision.vpnLogin) {
       const vpnNode = await this.vpnNodesService.findById(provision.vpnNodeId);
       await this.vpnClient.updateClient(
@@ -351,7 +318,7 @@ export class ProvisioningService {
       );
     }
 
-    if (shouldReleaseCapacity && provision.vpnNodeId) {
+    if (shouldReleaseCapacity && provision.vpnNodeId && provision.vpnLogin) {
       await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
     }
     if (shouldReleaseCapacity && provision.storageBackendId) {
@@ -386,6 +353,11 @@ export class ProvisioningService {
 
     const shouldReleaseCapacity = provision.status === 'active';
 
+    await this.configuratorRuntimeService.revokeProvisionDeviceAccesses(
+      provision.id,
+      'deleted',
+    );
+
     if (provision.vpnNodeId && provision.vpnLogin) {
       const vpnNode = await this.vpnNodesService.findById(provision.vpnNodeId);
       await this.vpnClient.deleteClient(
@@ -414,7 +386,7 @@ export class ProvisioningService {
       );
     }
 
-    if (shouldReleaseCapacity && provision.vpnNodeId) {
+    if (shouldReleaseCapacity && provision.vpnNodeId && provision.vpnLogin) {
       await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
     }
     if (shouldReleaseCapacity && provision.storageBackendId) {
@@ -449,6 +421,68 @@ export class ProvisioningService {
     }
 
     await this.deleteProvisionResources(provision);
+  }
+
+  private async activateDevice(event: BillingEventPayload): Promise<void> {
+    const provision = await this.provisionsService.findByExternalSubscriptionId(
+      event.externalSubscriptionId,
+    );
+    if (!provision) {
+      throw new Error(
+        `Cannot activate device for missing provision: ${event.externalSubscriptionId}`,
+      );
+    }
+
+    const snapshot = await this.configuratorRuntimeService.syncDeviceSnapshot(
+      provision.id,
+      {
+        deviceId: this.requireDeviceId(event),
+        deviceName: event.deviceName ?? null,
+        platform: event.platform ?? null,
+        installId: event.installId ?? null,
+        orderId: event.externalOrderId ?? null,
+        clientId: event.externalUserId,
+      },
+    );
+
+    if (snapshot) {
+      await this.billingProvider.updateDeviceConfig(
+        event.externalSubscriptionId,
+        snapshot,
+      );
+    }
+  }
+
+  private async revokeDevice(event: BillingEventPayload): Promise<void> {
+    const provision = await this.provisionsService.findByExternalSubscriptionId(
+      event.externalSubscriptionId,
+    );
+    if (!provision) {
+      this.logger.warn(
+        `Cannot revoke device for missing provision: ${event.externalSubscriptionId}`,
+      );
+      return;
+    }
+
+    const snapshot = await this.configuratorRuntimeService.revokeDeviceSnapshot(
+      provision.id,
+      {
+        deviceId: this.requireDeviceId(event),
+        deviceName: event.deviceName ?? null,
+        platform: event.platform ?? null,
+        installId: event.installId ?? null,
+        orderId: event.externalOrderId ?? null,
+        clientId: event.externalUserId,
+      },
+      'revoked',
+    );
+
+    if (snapshot) {
+      await this.billingProvider.updateDeviceConfig(
+        event.externalSubscriptionId,
+        snapshot,
+      );
+    }
   }
 
   private async updatePlan(event: BillingEventPayload): Promise<void> {
@@ -570,6 +604,15 @@ export class ProvisioningService {
     }
 
     throw new Error('Billing webhook payload is missing deviceLimit');
+  }
+
+  private requireDeviceId(event: BillingEventPayload): string {
+    const deviceId = event.deviceId?.trim();
+    if (!deviceId) {
+      throw new Error('Billing webhook payload is missing deviceId');
+    }
+
+    return deviceId;
   }
 
   private async syncConfiguratorSnapshot(

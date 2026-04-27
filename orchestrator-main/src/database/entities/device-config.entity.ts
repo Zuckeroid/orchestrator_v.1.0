@@ -18,7 +18,8 @@ export type DeviceConfigStatus =
   | 'ready'
   | 'active'
   | 'failed'
-  | 'revoked';
+  | 'revoked'
+  | 'deleted';
 
 @Entity('device_configs')
 export class DeviceConfigEntity {

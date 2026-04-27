@@ -382,7 +382,10 @@ export type BillingWebhookEvent =
   | 'payment_paid'
   | 'subscription_cancel'
   | 'subscription_expired'
-  | 'plan_changed';
+  | 'plan_changed'
+  | 'subscription_delete'
+  | 'device_activated'
+  | 'device_revoked';
 
 export interface BillingWebhookPayload {
   event: BillingWebhookEvent;
@@ -392,6 +395,10 @@ export interface BillingWebhookPayload {
   externalOrderId?: string;
   externalPaymentId?: string;
   externalPlanId?: string;
+  deviceId?: string;
+  deviceName?: string;
+  platform?: string;
+  installId?: string;
   email: string;
   status?: string;
   expiresAt?: string;

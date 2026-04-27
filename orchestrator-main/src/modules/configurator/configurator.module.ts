@@ -6,6 +6,8 @@ import { PolicyTemplateEntity } from '../../database/entities/policy-template.en
 import { ProvisionEntity } from '../../database/entities/provision.entity';
 import { ProviderAccessEntity } from '../../database/entities/provider-access.entity';
 import { BillingModule } from '../../integrations/billing/billing.module';
+import { VpnModule } from '../../integrations/vpn/vpn.module';
+import { NodesModule } from '../nodes/nodes.module';
 import { ConfiguratorController } from './configurator.controller';
 import { ConfiguratorRuntimeService } from './configurator-runtime.service';
 import { ConfiguratorService } from './configurator.service';
@@ -13,6 +15,8 @@ import { ConfiguratorService } from './configurator.service';
 @Module({
   imports: [
     BillingModule,
+    VpnModule,
+    NodesModule,
     TypeOrmModule.forFeature([
       DeviceConfigEntity,
       PolicyTemplateEntity,

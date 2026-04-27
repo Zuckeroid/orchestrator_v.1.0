@@ -3,7 +3,9 @@ export type BillingEventType =
   | 'subscription_cancel'
   | 'subscription_expired'
   | 'plan_changed'
-  | 'subscription_delete';
+  | 'subscription_delete'
+  | 'device_activated'
+  | 'device_revoked';
 
 export interface BillingEventPayload {
   event: BillingEventType;
@@ -14,6 +16,10 @@ export interface BillingEventPayload {
   externalPaymentId?: string;
   externalPlanId?: string;
   deviceLimit?: number;
+  deviceId?: string;
+  deviceName?: string;
+  platform?: string;
+  installId?: string;
   email: string;
   status?: string;
   expiresAt?: string;

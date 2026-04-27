@@ -99,6 +99,10 @@ export class WebhookService {
       externalPaymentId: this.getOptionalString(body, 'externalPaymentId'),
       externalPlanId: this.getOptionalString(body, 'externalPlanId'),
       deviceLimit: this.getOptionalNumber(body, 'deviceLimit'),
+      deviceId: this.getOptionalString(body, 'deviceId'),
+      deviceName: this.getOptionalString(body, 'deviceName'),
+      platform: this.getOptionalString(body, 'platform'),
+      installId: this.getOptionalString(body, 'installId'),
       email: this.getString(body, 'email'),
       status: this.getOptionalString(body, 'status'),
       expiresAt: this.getOptionalString(body, 'expiresAt'),
@@ -117,6 +121,8 @@ export class WebhookService {
       'subscription_expired',
       'plan_changed',
       'subscription_delete',
+      'device_activated',
+      'device_revoked',
     ];
 
     if (!supportedEvents.includes(payload.event)) {
@@ -135,6 +141,11 @@ export class WebhookService {
     if (payload.event === 'plan_changed') {
       this.requireField(payload.externalPlanId, 'externalPlanId');
       this.requireNumberField(payload.deviceLimit, 'deviceLimit');
+    }
+
+    if (payload.event === 'device_activated' || payload.event === 'device_revoked') {
+      this.requireField(payload.deviceId, 'deviceId');
+      this.requireField(payload.installId, 'installId');
     }
 
     if (payload.expiresAt) {

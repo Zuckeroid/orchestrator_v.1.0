@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import axios from 'axios';
 import { createHash } from 'crypto';
@@ -14,6 +14,14 @@ import {
   ProviderAccessEntity,
   ProviderAccessStatus,
 } from '../../database/entities/provider-access.entity';
+import { VpnNodeEntity } from '../../database/entities/vpn-node.entity';
+import {
+  VpnClient,
+  VpnClientResult,
+  VpnNodeConfig,
+} from '../../integrations/vpn/vpn-client.interface';
+import { VPN_CLIENT } from '../../integrations/vpn/vpn.module';
+import { VpnNodesService } from '../nodes/vpn-nodes.service';
 
 @Injectable()
 export class ConfiguratorRuntimeService {
@@ -29,6 +37,9 @@ export class ConfiguratorRuntimeService {
     private readonly deviceConfigsRepository: Repository<DeviceConfigEntity>,
     @InjectRepository(ProviderAccessEntity)
     private readonly providerAccessesRepository: Repository<ProviderAccessEntity>,
+    @Inject(VPN_CLIENT)
+    private readonly vpnClient: VpnClient,
+    private readonly vpnNodesService: VpnNodesService,
   ) {}
 
   async syncProvisionSnapshot(provisionId: string): Promise<BillingConfigSnapshot | null> {
@@ -193,6 +204,278 @@ export class ConfiguratorRuntimeService {
     }
   }
 
+  async syncDeviceSnapshot(
+    provisionId: string,
+    device: ConfiguratorDeviceIdentity,
+  ): Promise<BillingConfigSnapshot | null> {
+    const provision = await this.provisionsRepository.findOne({
+      where: { id: provisionId },
+      relations: {
+        plan: true,
+        vpnNode: true,
+      },
+    });
+
+    if (!provision) {
+      this.logger.warn(`Device snapshot skipped for missing provision ${provisionId}`);
+      return null;
+    }
+
+    const deviceConfig = await this.getOrCreateDeviceConfig(provision, device);
+    const providerAccess = await this.getOrCreateProviderAccess(deviceConfig);
+    const now = new Date();
+
+    if (provision.status !== 'active') {
+      await this.deviceConfigsRepository.save({
+        ...deviceConfig,
+        ...this.deviceIdentityPatch(device),
+        status: this.mapDeviceStatus(provision.status),
+        lastError: provision.error ?? 'Service is not active',
+      });
+      await this.providerAccessesRepository.save({
+        ...providerAccess,
+        status: this.mapProviderStatus(provision.status),
+        lastSyncedAt: now,
+      });
+
+      return this.buildBillingSnapshot(
+        provision,
+        {
+          ready: false,
+          runtimeType: deviceConfig.runtimeType ?? null,
+          protocol: deviceConfig.protocol ?? null,
+          configRevision: deviceConfig.configRevision ?? null,
+          runtimePayload: null,
+          generatedAt: deviceConfig.generatedAt?.toISOString() ?? null,
+        },
+        device,
+      );
+    }
+
+    if (!provision.vpnNodeId || !provision.vpnNode) {
+      const message = 'VPN node is not selected for this service';
+      await this.deviceConfigsRepository.save({
+        ...deviceConfig,
+        ...this.deviceIdentityPatch(device),
+        status: 'failed',
+        lastError: message,
+      });
+      await this.providerAccessesRepository.save({
+        ...providerAccess,
+        status: 'failed',
+        lastSyncedAt: now,
+      });
+
+      return this.buildBillingSnapshot(
+        provision,
+        {
+          ready: false,
+          runtimeType: deviceConfig.runtimeType ?? null,
+          protocol: deviceConfig.protocol ?? null,
+          configRevision: deviceConfig.configRevision ?? null,
+          runtimePayload: null,
+          generatedAt: deviceConfig.generatedAt?.toISOString() ?? null,
+        },
+        device,
+      );
+    }
+
+    let createdClient: VpnClientResult | null = null;
+    let loadIncremented = false;
+
+    try {
+      const providerMaterial = await this.resolveDeviceProviderMaterial(
+        provision,
+        providerAccess,
+        device,
+      );
+      createdClient = providerMaterial.createdClient;
+      loadIncremented = providerMaterial.loadIncremented;
+
+      const runtime = await this.buildRuntimeSnapshotFromLink(
+        providerMaterial.subscriptionLink,
+      );
+      const revision = this.buildRevision(provision, runtime, device);
+
+      await this.deviceConfigsRepository.save({
+        ...deviceConfig,
+        ...this.deviceIdentityPatch(device),
+        status: 'ready',
+        runtimeType: 'xray_config',
+        runtimePayload: runtime.payload,
+        protocol: runtime.protocol,
+        nodeId: provision.vpnNodeId ?? null,
+        configRevision: revision,
+        routingPolicyJson: this.defaultRoutingPolicy(),
+        automationPolicyJson: this.defaultAutomationPolicy(),
+        telemetryProfileJson: this.defaultTelemetryProfile(),
+        lastError: null,
+        generatedAt: now,
+      });
+
+      await this.providerAccessesRepository.save({
+        ...providerAccess,
+        provider: '3x-ui',
+        providerUserId: providerMaterial.login,
+        providerLogin: providerMaterial.login,
+        status: 'active',
+        lastSyncedAt: now,
+        providerMetadataJson: this.buildDeviceProviderMetadata(
+          provision,
+          device,
+          providerMaterial.subscriptionLink,
+          {
+            resolvedLink: runtime.sourceLink,
+            sourceCount: runtime.sourceCount,
+            protocol: runtime.protocol,
+          },
+        ),
+      });
+
+      return this.buildBillingSnapshot(
+        provision,
+        {
+          ready: true,
+          runtimeType: 'xray_config',
+          protocol: runtime.protocol,
+          configRevision: revision,
+          runtimePayload: runtime.payload,
+          generatedAt: now.toISOString(),
+        },
+        device,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Device runtime generation failed for provision ${provision.externalSubscriptionId}, device ${device.deviceId}: ${message}`,
+      );
+
+      if (createdClient && provision.vpnNode) {
+        await this.deleteCreatedClientQuietly(provision.vpnNode, createdClient.login);
+      }
+      if (loadIncremented && provision.vpnNodeId) {
+        await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
+      }
+
+      await this.deviceConfigsRepository.save({
+        ...deviceConfig,
+        ...this.deviceIdentityPatch(device),
+        status: 'failed',
+        nodeId: provision.vpnNodeId ?? null,
+        lastError: message,
+      });
+      await this.providerAccessesRepository.save({
+        ...providerAccess,
+        provider: '3x-ui',
+        status: 'failed',
+        lastSyncedAt: now,
+      });
+
+      return this.buildBillingSnapshot(
+        provision,
+        {
+          ready: false,
+          runtimeType: deviceConfig.runtimeType ?? null,
+          protocol: deviceConfig.protocol ?? null,
+          configRevision: deviceConfig.configRevision ?? null,
+          runtimePayload: null,
+          generatedAt: deviceConfig.generatedAt?.toISOString() ?? null,
+        },
+        device,
+      );
+    }
+  }
+
+  async revokeDeviceSnapshot(
+    provisionId: string,
+    device: ConfiguratorDeviceIdentity,
+    status: 'revoked' | 'deleted' = 'revoked',
+  ): Promise<BillingConfigSnapshot | null> {
+    const provision = await this.provisionsRepository.findOne({
+      where: { id: provisionId },
+      relations: {
+        vpnNode: true,
+      },
+    });
+    if (!provision) {
+      return null;
+    }
+
+    const deviceConfig = await this.findDeviceConfig(provision.id, device);
+    if (!deviceConfig) {
+      return this.buildBillingSnapshot(
+        provision,
+        {
+          ready: false,
+          runtimeType: null,
+          protocol: null,
+          configRevision: null,
+          runtimePayload: null,
+          generatedAt: null,
+        },
+        device,
+      );
+    }
+
+    await this.revokeProviderAccessesForDeviceConfig(
+      provision,
+      deviceConfig,
+      status,
+    );
+
+    await this.deviceConfigsRepository.save({
+      ...deviceConfig,
+      status,
+      runtimePayload: null,
+      lastError: null,
+    });
+
+    return this.buildBillingSnapshot(
+      provision,
+      {
+        ready: false,
+        runtimeType: deviceConfig.runtimeType ?? null,
+        protocol: deviceConfig.protocol ?? null,
+        configRevision: deviceConfig.configRevision ?? null,
+        runtimePayload: null,
+        generatedAt: deviceConfig.generatedAt?.toISOString() ?? null,
+      },
+      device,
+    );
+  }
+
+  async revokeProvisionDeviceAccesses(
+    provisionId: string,
+    status: 'revoked' | 'deleted' = 'revoked',
+  ): Promise<void> {
+    const provision = await this.provisionsRepository.findOne({
+      where: { id: provisionId },
+      relations: {
+        vpnNode: true,
+        deviceConfigs: {
+          providerAccesses: true,
+        },
+      },
+    });
+    if (!provision) {
+      return;
+    }
+
+    for (const deviceConfig of provision.deviceConfigs ?? []) {
+      await this.revokeProviderAccessesForDeviceConfig(
+        provision,
+        deviceConfig,
+        status,
+      );
+      await this.deviceConfigsRepository.save({
+        ...deviceConfig,
+        status,
+        runtimePayload: null,
+        lastError: null,
+      });
+    }
+  }
+
   private async getOrCreateServiceConfig(
     provision: ProvisionEntity,
   ): Promise<DeviceConfigEntity> {
@@ -214,6 +497,72 @@ export class ConfiguratorRuntimeService {
     );
   }
 
+  private async getOrCreateDeviceConfig(
+    provision: ProvisionEntity,
+    device: ConfiguratorDeviceIdentity,
+  ): Promise<DeviceConfigEntity> {
+    const existing = await this.findDeviceConfig(provision.id, device);
+    if (existing) {
+      return existing;
+    }
+
+    return this.deviceConfigsRepository.save(
+      this.deviceConfigsRepository.create({
+        provisionId: provision.id,
+        ...this.deviceIdentityPatch(device),
+        status: 'pending',
+        nodeId: provision.vpnNodeId ?? null,
+      }),
+    );
+  }
+
+  private async findDeviceConfig(
+    provisionId: string,
+    device: ConfiguratorDeviceIdentity,
+  ): Promise<DeviceConfigEntity | null> {
+    const where = [];
+    if (device.deviceId?.trim()) {
+      where.push({
+        provisionId,
+        deviceId: device.deviceId.trim(),
+      });
+    }
+    if (device.installId?.trim()) {
+      where.push({
+        provisionId,
+        installId: device.installId.trim(),
+      });
+    }
+
+    if (where.length === 0) {
+      return null;
+    }
+
+    return this.deviceConfigsRepository.findOne({
+      where,
+      relations: {
+        providerAccesses: true,
+      },
+      order: {
+        updatedAt: 'DESC',
+      },
+    });
+  }
+
+  private deviceIdentityPatch(
+    device: ConfiguratorDeviceIdentity,
+  ): Pick<
+    DeviceConfigEntity,
+    'deviceId' | 'orderId' | 'clientId' | 'installId'
+  > {
+    return {
+      deviceId: device.deviceId?.trim() || null,
+      orderId: device.orderId?.trim() || null,
+      clientId: device.clientId?.trim() || null,
+      installId: device.installId?.trim() || null,
+    };
+  }
+
   private async getOrCreateProviderAccess(
     deviceConfig: DeviceConfigEntity,
   ): Promise<ProviderAccessEntity> {
@@ -231,6 +580,129 @@ export class ConfiguratorRuntimeService {
         status: 'pending',
       }),
     );
+  }
+
+  private async resolveDeviceProviderMaterial(
+    provision: ProvisionEntity,
+    providerAccess: ProviderAccessEntity,
+    device: ConfiguratorDeviceIdentity,
+  ): Promise<{
+    login: string;
+    subscriptionLink: string;
+    createdClient: VpnClientResult | null;
+    loadIncremented: boolean;
+  }> {
+    const existingLink = this.readProviderMetadataString(
+      providerAccess.providerMetadataJson,
+      'subscriptionLink',
+    );
+    const existingLogin = providerAccess.providerLogin?.trim();
+    if (
+      providerAccess.status === 'active' &&
+      existingLogin &&
+      existingLink
+    ) {
+      return {
+        login: existingLogin,
+        subscriptionLink: existingLink,
+        createdClient: null,
+        loadIncremented: false,
+      };
+    }
+
+    if (!provision.vpnNodeId || !provision.vpnNode) {
+      throw new Error('VPN node is not selected for this service');
+    }
+
+    const loadIncremented = await this.vpnNodesService.incrementLoad(
+      provision.vpnNodeId,
+    );
+    if (!loadIncremented) {
+      throw new Error('VPN node capacity was exhausted');
+    }
+
+    try {
+      const createdClient = await this.vpnClient.createClient(
+        this.toVpnNodeConfig(provision.vpnNode),
+        {
+          email: provision.email,
+          externalSubscriptionId: this.buildDeviceExternalSubscriptionId(
+            provision,
+            device,
+          ),
+          limitIp: 1,
+          expiresAt: provision.serviceExpiresAt ?? undefined,
+        },
+      );
+
+      return {
+        login: createdClient.login,
+        subscriptionLink: createdClient.subscriptionLink,
+        createdClient,
+        loadIncremented,
+      };
+    } catch (error) {
+      await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
+      throw error;
+    }
+  }
+
+  private async revokeProviderAccessesForDeviceConfig(
+    provision: ProvisionEntity,
+    deviceConfig: DeviceConfigEntity,
+    status: 'revoked' | 'deleted',
+  ): Promise<void> {
+    const providerAccesses =
+      deviceConfig.providerAccesses ??
+      (await this.providerAccessesRepository.find({
+        where: { deviceConfigId: deviceConfig.id },
+      }));
+    const now = new Date();
+
+    for (const providerAccess of providerAccesses) {
+      const login = providerAccess.providerLogin?.trim();
+      if (
+        provision.vpnNode &&
+        login &&
+        (providerAccess.status === 'active' || providerAccess.status === 'failed')
+      ) {
+        await this.deleteCreatedClientQuietly(provision.vpnNode, login);
+        if (provision.vpnNodeId) {
+          await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
+        }
+      }
+
+      await this.providerAccessesRepository.save({
+        ...providerAccess,
+        status,
+        lastSyncedAt: now,
+      });
+    }
+  }
+
+  private async deleteCreatedClientQuietly(
+    node: VpnNodeEntity,
+    login: string,
+  ): Promise<void> {
+    try {
+      await this.vpnClient.deleteClient(this.toVpnNodeConfig(node), login);
+    } catch (error) {
+      this.logger.warn(
+        `Provider client cleanup failed on node ${node.id}, login ${login}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private readProviderMetadataString(
+    metadata: Record<string, unknown> | null | undefined,
+    key: string,
+  ): string | null {
+    const value = metadata?.[key];
+    return typeof value === 'string' && value.trim() !== ''
+      ? value.trim()
+      : null;
   }
 
   private hasVpnMaterial(provision: ProvisionEntity): boolean {
@@ -288,6 +760,15 @@ export class ConfiguratorRuntimeService {
       throw new Error('Provision has no subscription link');
     }
 
+    return this.buildRuntimeSnapshotFromLink(subscriptionLink);
+  }
+
+  private async buildRuntimeSnapshotFromLink(subscriptionLink: string): Promise<{
+    protocol: string;
+    payload: string;
+    sourceLink: string;
+    sourceCount: number;
+  }> {
     const resolvedLinks = await this.resolveProviderLinks(subscriptionLink);
     if (resolvedLinks.length === 0) {
       throw new Error('Provider subscription returned no supported node links');
@@ -776,15 +1257,43 @@ export class ConfiguratorRuntimeService {
     };
   }
 
+  private buildDeviceProviderMetadata(
+    provision: ProvisionEntity,
+    device: ConfiguratorDeviceIdentity,
+    subscriptionLink: string,
+    runtime: {
+      resolvedLink: string;
+      sourceCount: number;
+      protocol: string;
+    },
+  ): Record<string, unknown> {
+    return {
+      externalSubscriptionId: provision.externalSubscriptionId,
+      deviceId: device.deviceId ?? null,
+      deviceName: device.deviceName ?? null,
+      platform: device.platform ?? null,
+      installId: device.installId ?? null,
+      subscriptionLink,
+      nodeId: provision.vpnNodeId ?? null,
+      nodeHost: provision.vpnNode?.host ?? null,
+      resolvedLink: runtime.resolvedLink,
+      sourceCount: runtime.sourceCount,
+      protocol: runtime.protocol,
+    };
+  }
+
   private buildRevision(
     provision: ProvisionEntity,
     runtime: { payload: string; protocol: string },
+    device?: ConfiguratorDeviceIdentity,
   ): string {
     const hash = createHash('sha1')
       .update(
         JSON.stringify({
           provisionId: provision.id,
           externalSubscriptionId: provision.externalSubscriptionId,
+          deviceId: device?.deviceId ?? null,
+          installId: device?.installId ?? null,
           nodeId: provision.vpnNodeId ?? null,
           protocol: runtime.protocol,
           payload: runtime.payload,
@@ -806,6 +1315,7 @@ export class ConfiguratorRuntimeService {
       runtimePayload: string | null;
       generatedAt: string | null;
     },
+    device?: ConfiguratorDeviceIdentity,
   ): BillingConfigSnapshot {
     return {
       ready: payload.ready,
@@ -813,12 +1323,35 @@ export class ConfiguratorRuntimeService {
       protocol: payload.protocol,
       configRevision: payload.configRevision,
       runtimePayload: payload.runtimePayload,
+      deviceId: device?.deviceId ?? null,
+      deviceName: device?.deviceName ?? null,
+      platform: device?.platform ?? null,
+      installId: device?.installId ?? null,
       nodeId: provision.vpnNodeId ?? null,
       nodeLabel: provision.vpnNode?.name ?? provision.vpnNode?.host ?? null,
       nodeCountry: provision.vpnNode?.country ?? null,
       nodeHost: provision.vpnNode?.host ?? null,
-      sourceSubscriptionLink: provision.subscriptionLink ?? null,
       generatedAt: payload.generatedAt,
+    };
+  }
+
+  private buildDeviceExternalSubscriptionId(
+    provision: ProvisionEntity,
+    device: ConfiguratorDeviceIdentity,
+  ): string {
+    const suffix = device.deviceId?.trim() || device.installId?.trim() || 'device';
+
+    return `${provision.externalSubscriptionId}_device_${suffix}`;
+  }
+
+  private toVpnNodeConfig(node: VpnNodeEntity): VpnNodeConfig {
+    return {
+      id: node.id,
+      host: node.host,
+      apiKey: node.apiKey,
+      apiVersion: node.apiVersion ?? undefined,
+      inboundId: node.inboundId ?? undefined,
+      subscriptionBaseUrl: node.subscriptionBaseUrl ?? undefined,
     };
   }
 
@@ -893,4 +1426,13 @@ export class ConfiguratorRuntimeService {
 interface ParsedLink {
   protocol: string;
   outbound: Record<string, unknown>;
+}
+
+export interface ConfiguratorDeviceIdentity {
+  deviceId: string;
+  deviceName?: string | null;
+  platform?: string | null;
+  installId?: string | null;
+  orderId?: string | null;
+  clientId?: string | null;
 }
