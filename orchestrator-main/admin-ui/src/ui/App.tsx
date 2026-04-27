@@ -4,6 +4,9 @@ import {
   AuditLog,
   BillingWebhookEvent,
   BillingWebhookPayload,
+  ConfiguratorPolicyTemplate,
+  ConfiguratorServiceDetail,
+  ConfiguratorServiceSummary,
   HealthData,
   PaginatedResult,
   Plan,
@@ -21,6 +24,7 @@ type TabId =
   | 'nodes'
   | 'storage'
   | 'provisions'
+  | 'configurator'
   | 'webhook'
   | 'events'
   | 'audit';
@@ -129,6 +133,7 @@ const emptyNodeForm: VpnNodeFormState = {
 };
 
 const PROVISIONS_PAGE_SIZE = 10;
+const CONFIGURATOR_PAGE_SIZE = 10;
 const EVENTS_PAGE_SIZE = 10;
 const AUDIT_PAGE_SIZE = 15;
 const PROVISION_STATUSES = [
@@ -569,6 +574,7 @@ export function App() {
     { id: 'nodes', label: 'VPN Nodes' },
     { id: 'storage', label: 'Storage Backends' },
     { id: 'provisions', label: 'Provisions' },
+    { id: 'configurator', label: 'Configurator' },
     { id: 'events', label: 'Events' },
     { id: 'webhook', label: 'Webhook Tester' },
     { id: 'audit', label: 'Audit' },
@@ -669,6 +675,9 @@ export function App() {
             onPurge={purgeDeletedProvisions}
             onDeleteNow={deleteProvisionNow}
           />
+        ) : null}
+        {activeTab === 'configurator' ? (
+          <ConfiguratorPanel refreshVersion={refreshVersion} />
         ) : null}
         {activeTab === 'webhook' ? (
           <WebhookTesterPanel
@@ -1713,6 +1722,487 @@ function ProvisionsPanel({
   );
 }
 
+function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
+  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
+  const [services, setServices] = useState<ConfiguratorServiceSummary[]>([]);
+  const [policyTemplates, setPolicyTemplates] = useState<
+    ConfiguratorPolicyTemplate[]
+  >([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState('');
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [selectedService, setSelectedService] =
+    useState<ConfiguratorServiceDetail | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
+  const totalPages = Math.max(Math.ceil(totalItems / CONFIGURATOR_PAGE_SIZE), 1);
+  const currentPage = Math.min(page, totalPages);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadServices() {
+      setListLoading(true);
+      setListError('');
+      try {
+        const query = new URLSearchParams({
+          page: String(currentPage),
+          limit: String(CONFIGURATOR_PAGE_SIZE),
+        });
+
+        if (statusFilter !== 'all') {
+          query.set('status', statusFilter);
+        }
+
+        const response = await api.get<PaginatedResult<ConfiguratorServiceSummary>>(
+          `/configurator/services?${query.toString()}`,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextTotalPages = Math.max(
+          Math.ceil(response.total / CONFIGURATOR_PAGE_SIZE),
+          1,
+        );
+        if (
+          response.items.length === 0 &&
+          response.total > 0 &&
+          currentPage > nextTotalPages
+        ) {
+          setPage(nextTotalPages);
+          return;
+        }
+
+        setServices(response.items);
+        setTotalItems(response.total);
+      } catch (caught) {
+        if (!cancelled) {
+          setListError(caught instanceof Error ? caught.message : String(caught));
+          setServices([]);
+          setTotalItems(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setListLoading(false);
+        }
+      }
+    }
+
+    void loadServices();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, currentPage, refreshVersion, statusFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPolicyTemplates() {
+      setTemplatesLoading(true);
+      setTemplatesError('');
+      try {
+        const response = await api.get<ConfiguratorPolicyTemplate[]>(
+          '/configurator/policy-templates',
+        );
+        if (!cancelled) {
+          setPolicyTemplates(response);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setTemplatesError(
+            caught instanceof Error ? caught.message : String(caught),
+          );
+          setPolicyTemplates([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setTemplatesLoading(false);
+        }
+      }
+    }
+
+    void loadPolicyTemplates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, refreshVersion]);
+
+  useEffect(() => {
+    if (services.length === 0) {
+      setSelectedServiceId(null);
+      setSelectedService(null);
+      setDetailsError('');
+      return;
+    }
+
+    const existing = services.find((service) => service.id === selectedServiceId);
+    if (!existing) {
+      setSelectedServiceId(services[0].id);
+    }
+  }, [services, selectedServiceId]);
+
+  useEffect(() => {
+    if (!selectedServiceId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadDetails() {
+      setDetailsLoading(true);
+      setDetailsError('');
+      try {
+        const details = await api.get<ConfiguratorServiceDetail>(
+          `/configurator/services/${selectedServiceId}`,
+        );
+        if (!cancelled) {
+          setSelectedService(details);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setSelectedService(null);
+          setDetailsError(caught instanceof Error ? caught.message : String(caught));
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailsLoading(false);
+        }
+      }
+    }
+
+    void loadDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, refreshVersion, selectedServiceId]);
+
+  return (
+    <section className="provisions-layout">
+      <div className="events-sidebar">
+        <section className="panel event-details-panel">
+          <div className="panel-heading">
+            <h2>Service Config</h2>
+            {selectedService ? (
+              <span className={`status-pill ${statusTone(selectedService.status)}`}>
+                {selectedService.status}
+              </span>
+            ) : null}
+          </div>
+          {detailsLoading ? <p>Loading configurator details...</p> : null}
+          {detailsError ? <div className="error-line">{detailsError}</div> : null}
+          {!detailsLoading && !detailsError && !selectedService ? (
+            <p className="muted">
+              Select a service to inspect the future device runtime model.
+            </p>
+          ) : null}
+          {!detailsLoading && !detailsError && selectedService ? (
+            <div className="configurator-stack">
+              <div className="detail-block">
+                <h3>Service master</h3>
+                <dl className="detail-list compact">
+                  <dt>Subscription</dt>
+                  <dd>{selectedService.externalSubscriptionId}</dd>
+                  <dt>User</dt>
+                  <dd>{selectedService.email}</dd>
+                  <dt>External user</dt>
+                  <dd>{selectedService.externalUserId}</dd>
+                  <dt>Order</dt>
+                  <dd>{selectedService.externalOrderId ?? 'none'}</dd>
+                  <dt>Plan</dt>
+                  <dd>
+                    {selectedService.plan
+                      ? `${selectedService.plan.name} (${selectedService.plan.externalPlanId})`
+                      : 'none'}
+                  </dd>
+                  <dt>Expires</dt>
+                  <dd>{formatDate(selectedService.serviceExpiresAt)}</dd>
+                  <dt>Days left</dt>
+                  <dd>{formatDaysLeft(selectedService.serviceExpiresAt)}</dd>
+                  <dt>Node</dt>
+                  <dd>
+                    {selectedService.vpnNode ? (
+                      <span className="node-label">
+                        {renderCountryFlag(selectedService.vpnNode.country)}
+                        <span>
+                          {selectedService.vpnNode.name ?? selectedService.vpnNode.host}
+                        </span>
+                      </span>
+                    ) : (
+                      'none'
+                    )}
+                  </dd>
+                  <dt>Legacy link</dt>
+                  <dd>
+                    {selectedService.subscriptionLink ? (
+                      <a
+                        href={selectedService.subscriptionLink}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {selectedService.subscriptionLink}
+                      </a>
+                    ) : (
+                      'none'
+                    )}
+                  </dd>
+                  <dt>Error</dt>
+                  <dd>{selectedService.error ?? 'none'}</dd>
+                </dl>
+              </div>
+
+              <div className="detail-block">
+                <div className="panel-heading">
+                  <h3>Policy templates</h3>
+                </div>
+                {templatesLoading ? <p>Loading templates...</p> : null}
+                {templatesError ? <div className="error-line">{templatesError}</div> : null}
+                {!templatesLoading && !templatesError && policyTemplates.length === 0 ? (
+                  <p className="muted">No policy templates yet.</p>
+                ) : null}
+                {policyTemplates.length > 0 ? (
+                  <div className="configurator-template-list">
+                    {policyTemplates.map((template) => (
+                      <div className="configurator-template-item" key={template.id}>
+                        <div>
+                          <strong>{template.name}</strong>
+                          <span className="cell-note">
+                            {template.type} · updated {formatDate(template.updatedAt)}
+                          </span>
+                        </div>
+                        {template.isDefault ? (
+                          <span className="status-pill green">default</span>
+                        ) : (
+                          <span className="status-pill slate">custom</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="detail-block">
+                <h3>Device configs</h3>
+                {selectedService.deviceConfigs.length === 0 ? (
+                  <p className="muted">
+                    No device configs yet. This is expected until the
+                    `device_activated` flow is wired into the configurator.
+                  </p>
+                ) : (
+                  <div className="configurator-stack">
+                    {selectedService.deviceConfigs.map((deviceConfig) => (
+                      <article className="configurator-device-card" key={deviceConfig.id}>
+                        <div className="configurator-card-header">
+                          <div>
+                            <strong>
+                              {deviceConfig.deviceId
+                                ? `Device ${deviceConfig.deviceId}`
+                                : 'Unbound device config'}
+                            </strong>
+                            <span className="cell-note">
+                              {deviceConfig.installId ?? 'No install id yet'}
+                            </span>
+                          </div>
+                          <span
+                            className={`status-pill ${statusTone(deviceConfig.status)}`}
+                          >
+                            {deviceConfig.status}
+                          </span>
+                        </div>
+
+                        <dl className="detail-list compact">
+                          <dt>Order</dt>
+                          <dd>{deviceConfig.orderId ?? 'none'}</dd>
+                          <dt>Client</dt>
+                          <dd>{deviceConfig.clientId ?? 'none'}</dd>
+                          <dt>Runtime</dt>
+                          <dd>{deviceConfig.runtimeType ?? 'not generated'}</dd>
+                          <dt>Protocol</dt>
+                          <dd>{deviceConfig.protocol ?? 'not selected'}</dd>
+                          <dt>Revision</dt>
+                          <dd>{deviceConfig.configRevision ?? 'none'}</dd>
+                          <dt>Generated</dt>
+                          <dd>{formatDate(deviceConfig.generatedAt)}</dd>
+                          <dt>Updated</dt>
+                          <dd>{formatDate(deviceConfig.updatedAt)}</dd>
+                          <dt>Node</dt>
+                          <dd>
+                            {deviceConfig.node ? (
+                              <span className="node-label">
+                                {renderCountryFlag(deviceConfig.node.country)}
+                                <span>
+                                  {deviceConfig.node.name ?? deviceConfig.node.host}
+                                </span>
+                              </span>
+                            ) : (
+                              'none'
+                            )}
+                          </dd>
+                          <dt>Provider access</dt>
+                          <dd>
+                            {deviceConfig.providerAccesses.length > 0 ? (
+                              <div className="configurator-provider-list">
+                                {deviceConfig.providerAccesses.map((providerAccess) => (
+                                  <div key={providerAccess.id}>
+                                    <strong>{providerAccess.provider}</strong>{' '}
+                                    <span
+                                      className={`status-pill ${statusTone(providerAccess.status)}`}
+                                    >
+                                      {providerAccess.status}
+                                    </span>
+                                    <span className="cell-note">
+                                      login: {providerAccess.providerLogin ?? 'none'} · user:{' '}
+                                      {providerAccess.providerUserId ?? 'none'} · synced{' '}
+                                      {formatDate(providerAccess.lastSyncedAt)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              'none'
+                            )}
+                          </dd>
+                          <dt>Error</dt>
+                          <dd>{deviceConfig.lastError ?? 'none'}</dd>
+                        </dl>
+
+                        <div className="detail-block">
+                          <h3>Routing policy</h3>
+                          <pre className="json-block">
+                            {formatJson(deviceConfig.routingPolicy ?? {})}
+                          </pre>
+                        </div>
+                        <div className="detail-block">
+                          <h3>Automation policy</h3>
+                          <pre className="json-block">
+                            {formatJson(deviceConfig.automationPolicy ?? {})}
+                          </pre>
+                        </div>
+                        <div className="detail-block">
+                          <h3>Telemetry profile</h3>
+                          <pre className="json-block">
+                            {formatJson(deviceConfig.telemetryProfile ?? {})}
+                          </pre>
+                        </div>
+                        <div className="detail-block">
+                          <h3>Runtime payload</h3>
+                          <pre className="json-block">
+                            {formatMaybeJsonText(deviceConfig.runtimePayload)}
+                          </pre>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
+
+      <section className="panel table-panel">
+        <div className="panel-heading">
+          <h2>Configurator services</h2>
+          <div className="row-actions filter-toolbar">
+            <label className="inline-filter">
+              Status
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="all">All</option>
+                {PROVISION_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+        {listLoading ? <p>Loading configurator services...</p> : null}
+        {listError ? <div className="error-line">{listError}</div> : null}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>User</th>
+                <th>Devices</th>
+                <th>Revision</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {services.map((service) => (
+                <tr
+                  key={service.id}
+                  className={
+                    service.id === selectedServiceId ? 'event-row active' : 'event-row'
+                  }
+                  onClick={() => setSelectedServiceId(service.id)}
+                >
+                  <td>
+                    <strong>{service.planName ?? service.externalSubscriptionId}</strong>
+                    <span className="cell-note">
+                      {service.externalSubscriptionId}
+                    </span>
+                    <span className="cell-note">
+                      node: {service.nodeName ?? 'none'} · protocol:{' '}
+                      {service.protocols.join(', ') || 'none'}
+                    </span>
+                  </td>
+                  <td>
+                    {service.email}
+                    <span className="cell-note">{service.externalUserId}</span>
+                  </td>
+                  <td>
+                    {service.activeDeviceConfigCount}/{service.deviceConfigCount}
+                    <span className="cell-note">
+                      providers: {service.providers.join(', ') || 'none'}
+                    </span>
+                  </td>
+                  <td>
+                    {service.latestConfigRevision ?? 'none'}
+                    <span className="cell-note">
+                      {formatDate(service.latestGeneratedAt)}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`status-pill ${statusTone(service.status)}`}>
+                      {service.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <PaginationControls
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          pageSize={CONFIGURATOR_PAGE_SIZE}
+          onPageChange={setPage}
+        />
+      </section>
+    </section>
+  );
+}
+
 function WebhookTesterPanel({
   form,
   plans,
@@ -2482,6 +2972,18 @@ function paginate<T>(items: T[], page: number, pageSize: number) {
 
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
+}
+
+function formatMaybeJsonText(value?: string | null): string {
+  if (!value) {
+    return 'not generated';
+  }
+
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
 }
 
 function buildPlanPayload(form: PlanFormState) {

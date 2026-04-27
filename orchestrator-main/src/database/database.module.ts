@@ -2,19 +2,25 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditLogEntity } from './entities/audit-log.entity';
+import { DeviceConfigEntity } from './entities/device-config.entity';
 import { JobEntity } from './entities/job.entity';
 import { PlanEntity } from './entities/plan.entity';
 import { ProcessedEventEntity } from './entities/processed-event.entity';
 import { ProvisionEntity } from './entities/provision.entity';
+import { ProviderAccessEntity } from './entities/provider-access.entity';
+import { PolicyTemplateEntity } from './entities/policy-template.entity';
 import { StorageBackendEntity } from './entities/storage-backend.entity';
 import { VpnNodeEntity } from './entities/vpn-node.entity';
 
 export const DATABASE_ENTITIES = [
   AuditLogEntity,
+  DeviceConfigEntity,
   JobEntity,
   PlanEntity,
+  PolicyTemplateEntity,
   ProcessedEventEntity,
   ProvisionEntity,
+  ProviderAccessEntity,
   StorageBackendEntity,
   VpnNodeEntity,
 ];

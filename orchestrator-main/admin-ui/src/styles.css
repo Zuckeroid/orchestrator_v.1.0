@@ -826,6 +826,38 @@ td {
   gap: 10px;
 }
 
+.configurator-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.configurator-device-card,
+.configurator-template-item {
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--color-panel-muted);
+}
+
+.configurator-device-card {
+  display: grid;
+  gap: 14px;
+}
+
+.configurator-card-header,
+.configurator-template-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.configurator-template-list,
+.configurator-provider-list {
+  display: grid;
+  gap: 10px;
+}
+
 .detail-list {
   display: grid;
   grid-template-columns: minmax(110px, 140px) minmax(0, 1fr);

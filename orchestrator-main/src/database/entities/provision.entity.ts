@@ -5,9 +5,11 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { DeviceConfigEntity } from './device-config.entity';
 import { PlanEntity } from './plan.entity';
 import { StorageBackendEntity } from './storage-backend.entity';
 import { VpnNodeEntity } from './vpn-node.entity';
@@ -107,6 +109,9 @@ export class ProvisionEntity {
 
   @Column({ name: 'deleted_at', type: 'timestamp', nullable: true })
   deletedAt?: Date | null;
+
+  @OneToMany(() => DeviceConfigEntity, (deviceConfig) => deviceConfig.provision)
+  deviceConfigs?: DeviceConfigEntity[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

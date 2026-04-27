@@ -7,6 +7,7 @@ import { WebhookService } from './webhook/webhook.service';
 import { QueueModule } from './queue/queue.module';
 import { DatabaseModule } from './database/database.module';
 import { ProcessedEventsModule } from './modules/processed-events/processed-events.module';
+import { ConfiguratorModule } from './modules/configurator/configurator.module';
 import { NodesModule } from './modules/nodes/nodes.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { ProvisionsModule } from './modules/provisions/provisions.module';
@@ -31,6 +32,7 @@ import { validateEnv } from './config/validate-env';
     }),
     DatabaseModule,
     ProcessedEventsModule,
+    ConfiguratorModule,
     PlansModule,
     ProvisionsModule,
     NodesModule,

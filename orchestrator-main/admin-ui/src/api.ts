@@ -254,6 +254,105 @@ export interface Provision {
   updatedAt: string;
 }
 
+export interface ConfiguratorServiceSummary {
+  id: string;
+  externalSubscriptionId: string;
+  externalUserId: string;
+  externalOrderId?: string | null;
+  email: string;
+  status: string;
+  serviceExpiresAt?: string | null;
+  error?: string | null;
+  planName?: string | null;
+  externalPlanId?: string | null;
+  deviceConfigCount: number;
+  activeDeviceConfigCount: number;
+  latestConfigRevision?: string | null;
+  latestGeneratedAt?: string | null;
+  protocols: string[];
+  providers: string[];
+  nodeName?: string | null;
+}
+
+export interface ConfiguratorProviderAccess {
+  id: string;
+  provider: string;
+  providerUserId?: string | null;
+  providerLogin?: string | null;
+  status: string;
+  lastSyncedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  providerMetadata?: Record<string, unknown> | null;
+}
+
+export interface ConfiguratorDeviceConfig {
+  id: string;
+  deviceId?: string | null;
+  orderId?: string | null;
+  clientId?: string | null;
+  installId?: string | null;
+  status: string;
+  runtimeType?: string | null;
+  protocol?: string | null;
+  configRevision?: string | null;
+  generatedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastError?: string | null;
+  runtimePayload?: string | null;
+  routingPolicy?: Record<string, unknown> | null;
+  automationPolicy?: Record<string, unknown> | null;
+  telemetryProfile?: Record<string, unknown> | null;
+  node?: {
+    id: string;
+    name?: string | null;
+    country?: string | null;
+    host: string;
+    healthStatus: string;
+  } | null;
+  providerAccesses: ConfiguratorProviderAccess[];
+}
+
+export interface ConfiguratorServiceDetail {
+  id: string;
+  externalSubscriptionId: string;
+  externalUserId: string;
+  externalOrderId?: string | null;
+  email: string;
+  status: string;
+  serviceExpiresAt?: string | null;
+  deleteAfter?: string | null;
+  deletedAt?: string | null;
+  error?: string | null;
+  subscriptionLink?: string | null;
+  plan?: {
+    id: string;
+    externalPlanId: string;
+    name: string;
+    vpnEnabled: boolean;
+    storageEnabled: boolean;
+    maxDevices?: number | null;
+  } | null;
+  vpnNode?: {
+    id: string;
+    name?: string | null;
+    country?: string | null;
+    host: string;
+    healthStatus: string;
+  } | null;
+  deviceConfigs: ConfiguratorDeviceConfig[];
+}
+
+export interface ConfiguratorPolicyTemplate {
+  id: string;
+  name: string;
+  type: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ProcessedEvent {
   id: string;
   eventId: string;
