@@ -30,6 +30,21 @@ import { VpnNodesService } from '../nodes/vpn-nodes.service';
 @Injectable()
 export class ConfiguratorRuntimeService {
   private readonly logger = new Logger(ConfiguratorRuntimeService.name);
+  private readonly defaultRoutingPackages = [
+    'com.android.chrome',
+    'org.telegram.messenger',
+    'com.whatsapp',
+    'com.instagram.android',
+    'com.zhiliaoapp.musically',
+    'com.netflix.mediaclient',
+    'com.spotify.music',
+    'com.google.android.youtube',
+    'com.google.android.apps.youtube.music',
+    'ru.yandex.music',
+    'deezer.android.app',
+    'com.soundcloud.android',
+    'com.aspiro.tidal',
+  ];
   private readonly insecureHttpsAgent = new HttpsAgent({
     rejectUnauthorized: false,
   });
@@ -456,6 +471,49 @@ export class ConfiguratorRuntimeService {
       },
       device,
     );
+  }
+
+  async syncProvisionAndDeviceSnapshots(
+    provisionId: string,
+  ): Promise<BillingConfigSnapshot[]> {
+    const snapshots: BillingConfigSnapshot[] = [];
+    const serviceSnapshot = await this.syncProvisionSnapshot(provisionId);
+    if (serviceSnapshot) {
+      snapshots.push(serviceSnapshot);
+    }
+
+    const provision = await this.provisionsRepository.findOne({
+      where: { id: provisionId },
+      relations: {
+        deviceConfigs: true,
+      },
+    });
+
+    if (!provision) {
+      return snapshots;
+    }
+
+    const deviceConfigs = (provision.deviceConfigs ?? []).filter(
+      (deviceConfig) =>
+        deviceConfig.status !== 'deleted' &&
+        deviceConfig.status !== 'revoked' &&
+        Boolean(deviceConfig.deviceId?.trim() || deviceConfig.installId?.trim()),
+    );
+
+    for (const deviceConfig of deviceConfigs) {
+      const deviceSnapshot = await this.syncDeviceSnapshot(provisionId, {
+        deviceId: deviceConfig.deviceId ?? undefined,
+        orderId: deviceConfig.orderId ?? provision.externalOrderId ?? undefined,
+        clientId: deviceConfig.clientId ?? provision.externalUserId ?? undefined,
+        installId: deviceConfig.installId ?? undefined,
+      });
+
+      if (deviceSnapshot) {
+        snapshots.push(deviceSnapshot);
+      }
+    }
+
+    return snapshots;
   }
 
   async revokeProvisionDeviceAccesses(
@@ -1256,14 +1314,18 @@ export class ConfiguratorRuntimeService {
       },
     });
 
-    return template?.payloadJson ?? fallback;
+    return this.normalizeDefaultPolicy(
+      type,
+      template?.payloadJson ?? fallback,
+      fallback,
+    );
   }
 
   private defaultRoutingPolicy(): Record<string, unknown> {
     return {
       version: 1,
       mode: 'selected_apps',
-      includedApps: [],
+      includedApps: this.defaultRoutingPackages,
       excludedApps: [],
     };
   }
@@ -1281,6 +1343,32 @@ export class ConfiguratorRuntimeService {
     return {
       mode: 'manual',
     };
+  }
+
+  private normalizeDefaultPolicy(
+    type: PolicyTemplateType,
+    payload: Record<string, unknown>,
+    fallback: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (type !== 'routing') {
+      return payload;
+    }
+
+    const mode =
+      typeof payload.mode === 'string' && payload.mode.trim() !== ''
+        ? payload.mode.trim()
+        : 'selected_apps';
+    if (mode !== 'selected_apps') {
+      return payload;
+    }
+
+    const includedApps = Array.isArray(payload.includedApps)
+      ? payload.includedApps.filter(
+          (item): item is string => typeof item === 'string',
+        )
+      : [];
+
+    return includedApps.length > 0 ? payload : fallback;
   }
 
   private buildProviderMetadata(

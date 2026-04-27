@@ -240,8 +240,10 @@ export class ConfiguratorService {
 
   async regenerateServiceConfig(id: string): Promise<ConfiguratorServiceDetail> {
     const provision = await this.getExistingProvision(id);
-    const snapshot = await this.configuratorRuntimeService.syncProvisionSnapshot(id);
-    if (snapshot) {
+    const snapshots =
+      await this.configuratorRuntimeService.syncProvisionAndDeviceSnapshots(id);
+
+    for (const snapshot of snapshots) {
       await this.billingProvider.updateDeviceConfig(
         provision.externalSubscriptionId,
         snapshot,
