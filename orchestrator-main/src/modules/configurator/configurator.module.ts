@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminApiKeyGuard } from '../../common/guards/admin-api-key.guard';
+import { AppPolicyAppEntity } from '../../database/entities/app-policy-app.entity';
 import { DeviceConfigEntity } from '../../database/entities/device-config.entity';
 import { PolicyTemplateEntity } from '../../database/entities/policy-template.entity';
 import { ProvisionEntity } from '../../database/entities/provision.entity';
@@ -18,6 +19,7 @@ import { ConfiguratorService } from './configurator.service';
     VpnModule,
     NodesModule,
     TypeOrmModule.forFeature([
+      AppPolicyAppEntity,
       DeviceConfigEntity,
       PolicyTemplateEntity,
       ProvisionEntity,

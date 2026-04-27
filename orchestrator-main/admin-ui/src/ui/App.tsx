@@ -1,6 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   ApiClient,
+  AppPolicyApp,
   AuditLog,
   BillingWebhookEvent,
   BillingWebhookPayload,
@@ -26,6 +27,7 @@ type TabId =
   | 'storage'
   | 'provisions'
   | 'configurator'
+  | 'app-policies'
   | 'webhook'
   | 'events'
   | 'audit';
@@ -76,6 +78,30 @@ interface VpnNodeFormState {
   capacity: string;
 }
 
+interface AppPolicyAppFormState {
+  name: string;
+  packageName: string;
+  platform: string;
+  category: string;
+  notes: string;
+  isActive: boolean;
+}
+
+interface RoutingProfileFormState {
+  name: string;
+  mode: string;
+  includedApps: string;
+  excludedApps: string;
+  isDefault: boolean;
+}
+
+interface AutomationProfileFormState {
+  name: string;
+  autoConnectApps: string;
+  autoDisconnectApps: string;
+  isDefault: boolean;
+}
+
 interface ViewState {
   health?: HealthData;
   queue?: QueueOverview;
@@ -119,6 +145,30 @@ const emptyStorageBackendForm: StorageBackendFormState = {
   secretKey: '',
   bucketPrefix: '',
   capacity: '100',
+};
+
+const emptyAppPolicyAppForm: AppPolicyAppFormState = {
+  name: '',
+  packageName: '',
+  platform: 'android',
+  category: '',
+  notes: '',
+  isActive: true,
+};
+
+const emptyRoutingProfileForm: RoutingProfileFormState = {
+  name: 'Default selected apps',
+  mode: 'selected_apps',
+  includedApps: '',
+  excludedApps: '',
+  isDefault: true,
+};
+
+const emptyAutomationProfileForm: AutomationProfileFormState = {
+  name: 'Default auto connect',
+  autoConnectApps: '',
+  autoDisconnectApps: '',
+  isDefault: true,
 };
 
 const emptyNodeForm: VpnNodeFormState = {
@@ -576,6 +626,7 @@ export function App() {
     { id: 'storage', label: 'Storage Backends' },
     { id: 'provisions', label: 'Provisions' },
     { id: 'configurator', label: 'Configurator' },
+    { id: 'app-policies', label: 'App Policies' },
     { id: 'events', label: 'Events' },
     { id: 'webhook', label: 'Webhook Tester' },
     { id: 'audit', label: 'Audit' },
@@ -679,6 +730,9 @@ export function App() {
         ) : null}
         {activeTab === 'configurator' ? (
           <ConfiguratorPanel refreshVersion={refreshVersion} />
+        ) : null}
+        {activeTab === 'app-policies' ? (
+          <AppPoliciesPanel refreshVersion={refreshVersion} />
         ) : null}
         {activeTab === 'webhook' ? (
           <WebhookTesterPanel
@@ -2272,6 +2326,565 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
   );
 }
 
+function AppPoliciesPanel({ refreshVersion }: { refreshVersion: number }) {
+  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
+  const [apps, setApps] = useState<AppPolicyApp[]>([]);
+  const [templates, setTemplates] = useState<ConfiguratorPolicyTemplate[]>([]);
+  const [appForm, setAppForm] = useState<AppPolicyAppFormState>(
+    emptyAppPolicyAppForm,
+  );
+  const [routingForm, setRoutingForm] = useState<RoutingProfileFormState>(
+    emptyRoutingProfileForm,
+  );
+  const [automationForm, setAutomationForm] =
+    useState<AutomationProfileFormState>(emptyAutomationProfileForm);
+  const [editingAppId, setEditingAppId] = useState<string | null>(null);
+  const [editingRoutingId, setEditingRoutingId] = useState<string | null>(null);
+  const [editingAutomationId, setEditingAutomationId] = useState<string | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [reloadVersion, setReloadVersion] = useState(0);
+
+  const routingTemplates = templates.filter((template) => template.type === 'routing');
+  const automationTemplates = templates.filter(
+    (template) => template.type === 'automation',
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPolicies() {
+      setLoading(true);
+      setError('');
+      try {
+        const [loadedApps, loadedTemplates] = await Promise.all([
+          api.get<AppPolicyApp[]>('/configurator/apps'),
+          api.get<ConfiguratorPolicyTemplate[]>('/configurator/policy-templates'),
+        ]);
+
+        if (!cancelled) {
+          setApps(loadedApps);
+          setTemplates(loadedTemplates);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : String(caught));
+          setApps([]);
+          setTemplates([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadPolicies();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, refreshVersion, reloadVersion]);
+
+  async function saveApp(event: FormEvent) {
+    event.preventDefault();
+    await runPolicyAction('Application saved', async () => {
+      const payload = buildAppPolicyAppPayload(appForm);
+      if (editingAppId) {
+        await api.patch<AppPolicyApp>(`/configurator/apps/${editingAppId}`, payload);
+      } else {
+        await api.post<AppPolicyApp>('/configurator/apps', payload);
+      }
+      resetAppForm();
+    });
+  }
+
+  async function saveRoutingProfile(event: FormEvent) {
+    event.preventDefault();
+    await runPolicyAction('Routing profile saved', async () => {
+      const payload = {
+        name: routingForm.name.trim(),
+        type: 'routing',
+        payload: buildRoutingPolicyPayload(routingForm),
+        isDefault: routingForm.isDefault,
+      };
+
+      if (editingRoutingId) {
+        await api.patch<ConfiguratorPolicyTemplate>(
+          `/configurator/policy-templates/${editingRoutingId}`,
+          payload,
+        );
+      } else {
+        await api.post<ConfiguratorPolicyTemplate>(
+          '/configurator/policy-templates',
+          payload,
+        );
+      }
+      resetRoutingForm();
+    });
+  }
+
+  async function saveAutomationProfile(event: FormEvent) {
+    event.preventDefault();
+    await runPolicyAction('Automation profile saved', async () => {
+      const payload = {
+        name: automationForm.name.trim(),
+        type: 'automation',
+        payload: buildAutomationPolicyPayload(automationForm),
+        isDefault: automationForm.isDefault,
+      };
+
+      if (editingAutomationId) {
+        await api.patch<ConfiguratorPolicyTemplate>(
+          `/configurator/policy-templates/${editingAutomationId}`,
+          payload,
+        );
+      } else {
+        await api.post<ConfiguratorPolicyTemplate>(
+          '/configurator/policy-templates',
+          payload,
+        );
+      }
+      resetAutomationForm();
+    });
+  }
+
+  async function deleteApp(app: AppPolicyApp) {
+    const confirmed = window.confirm(`Delete ${app.name} from the catalog?`);
+    if (!confirmed) {
+      return;
+    }
+
+    await runPolicyAction('Application deleted', async () => {
+      await api.delete(`/configurator/apps/${app.id}`);
+      if (editingAppId === app.id) {
+        resetAppForm();
+      }
+    });
+  }
+
+  async function deletePolicyTemplate(template: ConfiguratorPolicyTemplate) {
+    const confirmed = window.confirm(`Delete ${template.name}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    await runPolicyAction('Policy profile deleted', async () => {
+      await api.delete(`/configurator/policy-templates/${template.id}`);
+      if (editingRoutingId === template.id) {
+        resetRoutingForm();
+      }
+      if (editingAutomationId === template.id) {
+        resetAutomationForm();
+      }
+    });
+  }
+
+  async function runPolicyAction(messageText: string, action: () => Promise<void>) {
+    setSaving(true);
+    setMessage('');
+    setError('');
+    try {
+      await action();
+      setMessage(messageText);
+      setReloadVersion((value) => value + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function editApp(app: AppPolicyApp) {
+    setEditingAppId(app.id);
+    setAppForm({
+      name: app.name,
+      packageName: app.packageName,
+      platform: app.platform,
+      category: app.category ?? '',
+      notes: app.notes ?? '',
+      isActive: app.isActive,
+    });
+  }
+
+  function editRoutingTemplate(template: ConfiguratorPolicyTemplate) {
+    setEditingRoutingId(template.id);
+    setRoutingForm({
+      name: template.name,
+      mode: policyPayloadString(template.payload, 'mode', 'selected_apps'),
+      includedApps: packageTextFromPayload(
+        template.payload.includedApps ?? template.payload.default_enabled_apps,
+      ),
+      excludedApps: packageTextFromPayload(
+        template.payload.excludedApps ?? template.payload.default_excluded_apps,
+      ),
+      isDefault: template.isDefault,
+    });
+  }
+
+  function editAutomationTemplate(template: ConfiguratorPolicyTemplate) {
+    setEditingAutomationId(template.id);
+    setAutomationForm({
+      name: template.name,
+      autoConnectApps: packageTextFromPayload(
+        template.payload.autoConnectApps ?? template.payload.auto_enable_apps,
+      ),
+      autoDisconnectApps: packageTextFromPayload(
+        template.payload.autoDisconnectApps ?? template.payload.auto_disable_apps,
+      ),
+      isDefault: template.isDefault,
+    });
+  }
+
+  function resetAppForm() {
+    setEditingAppId(null);
+    setAppForm(emptyAppPolicyAppForm);
+  }
+
+  function resetRoutingForm() {
+    setEditingRoutingId(null);
+    setRoutingForm(emptyRoutingProfileForm);
+  }
+
+  function resetAutomationForm() {
+    setEditingAutomationId(null);
+    setAutomationForm(emptyAutomationProfileForm);
+  }
+
+  return (
+    <section className="split-layout app-policies-layout">
+      <div className="policy-form-stack">
+        <form className="panel form-panel" onSubmit={saveApp}>
+          <h2>{editingAppId ? 'Edit App' : 'Add App'}</h2>
+          <label>
+            App name
+            <input
+              required
+              value={appForm.name}
+              onChange={(event) => setAppForm({ ...appForm, name: event.target.value })}
+            />
+          </label>
+          <label>
+            Package name
+            <input
+              required
+              placeholder="org.telegram.messenger"
+              value={appForm.packageName}
+              onChange={(event) =>
+                setAppForm({ ...appForm, packageName: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Category
+            <input
+              placeholder="messenger"
+              value={appForm.category}
+              onChange={(event) =>
+                setAppForm({ ...appForm, category: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Platform
+            <input
+              value={appForm.platform}
+              onChange={(event) =>
+                setAppForm({ ...appForm, platform: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Notes
+            <textarea
+              rows={3}
+              value={appForm.notes}
+              onChange={(event) =>
+                setAppForm({ ...appForm, notes: event.target.value })
+              }
+            />
+          </label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={appForm.isActive}
+              onChange={(event) =>
+                setAppForm({ ...appForm, isActive: event.target.checked })
+              }
+            />
+            Active
+          </label>
+          <div className="form-actions">
+            <button className="primary" type="submit" disabled={saving}>
+              {editingAppId ? 'Save app' : 'Add app'}
+            </button>
+            {editingAppId ? (
+              <button type="button" onClick={resetAppForm}>
+                Cancel
+              </button>
+            ) : null}
+          </div>
+        </form>
+
+        <form className="panel form-panel" onSubmit={saveRoutingProfile}>
+          <h2>{editingRoutingId ? 'Edit Routing' : 'Routing Profile'}</h2>
+          <label>
+            Profile name
+            <input
+              required
+              value={routingForm.name}
+              onChange={(event) =>
+                setRoutingForm({ ...routingForm, name: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Mode
+            <select
+              value={routingForm.mode}
+              onChange={(event) =>
+                setRoutingForm({ ...routingForm, mode: event.target.value })
+              }
+            >
+              <option value="selected_apps">Selected apps</option>
+              <option value="all_except">All except excluded</option>
+              <option value="all_apps">All apps</option>
+            </select>
+          </label>
+          <label>
+            Included packages
+            <textarea
+              rows={5}
+              placeholder="one package per line"
+              value={routingForm.includedApps}
+              onChange={(event) =>
+                setRoutingForm({ ...routingForm, includedApps: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Excluded packages
+            <textarea
+              rows={4}
+              placeholder="one package per line"
+              value={routingForm.excludedApps}
+              onChange={(event) =>
+                setRoutingForm({ ...routingForm, excludedApps: event.target.value })
+              }
+            />
+          </label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={routingForm.isDefault}
+              onChange={(event) =>
+                setRoutingForm({ ...routingForm, isDefault: event.target.checked })
+              }
+            />
+            Default routing profile
+          </label>
+          <div className="form-actions">
+            <button className="primary" type="submit" disabled={saving}>
+              Save routing
+            </button>
+            {editingRoutingId ? (
+              <button type="button" onClick={resetRoutingForm}>
+                Cancel
+              </button>
+            ) : null}
+          </div>
+        </form>
+
+        <form className="panel form-panel" onSubmit={saveAutomationProfile}>
+          <h2>{editingAutomationId ? 'Edit Automation' : 'Automation Profile'}</h2>
+          <label>
+            Profile name
+            <input
+              required
+              value={automationForm.name}
+              onChange={(event) =>
+                setAutomationForm({ ...automationForm, name: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Auto-connect packages
+            <textarea
+              rows={5}
+              placeholder="one package per line"
+              value={automationForm.autoConnectApps}
+              onChange={(event) =>
+                setAutomationForm({
+                  ...automationForm,
+                  autoConnectApps: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Auto-disconnect packages
+            <textarea
+              rows={4}
+              placeholder="one package per line"
+              value={automationForm.autoDisconnectApps}
+              onChange={(event) =>
+                setAutomationForm({
+                  ...automationForm,
+                  autoDisconnectApps: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={automationForm.isDefault}
+              onChange={(event) =>
+                setAutomationForm({
+                  ...automationForm,
+                  isDefault: event.target.checked,
+                })
+              }
+            />
+            Default automation profile
+          </label>
+          <div className="form-actions">
+            <button className="primary" type="submit" disabled={saving}>
+              Save automation
+            </button>
+            {editingAutomationId ? (
+              <button type="button" onClick={resetAutomationForm}>
+                Cancel
+              </button>
+            ) : null}
+          </div>
+        </form>
+      </div>
+
+      <section className="panel table-panel">
+        <div className="panel-heading">
+          <h2>Application Policies</h2>
+          <div className="pill-row">
+            <span className="pill">apps: {apps.length}</span>
+            <span className="pill">routing: {routingTemplates.length}</span>
+            <span className="pill">automation: {automationTemplates.length}</span>
+          </div>
+        </div>
+        {loading ? <p>Loading app policies...</p> : null}
+        {error ? <div className="error-line">{error}</div> : null}
+        {message ? <div className="success-line">{message}</div> : null}
+
+        <div className="policy-section">
+          <h3>App catalog</h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Application</th>
+                  <th>Package</th>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {apps.map((app) => (
+                  <tr key={app.id}>
+                    <td>
+                      <strong>{app.name}</strong>
+                      <span className="cell-note">{app.platform}</span>
+                    </td>
+                    <td>{app.packageName}</td>
+                    <td>{app.category ?? 'none'}</td>
+                    <td>
+                      <span className={`status-pill ${app.isActive ? 'green' : 'slate'}`}>
+                        {app.isActive ? 'active' : 'inactive'}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        <button type="button" onClick={() => editApp(app)}>
+                          Edit
+                        </button>
+                        <button type="button" onClick={() => void deleteApp(app)}>
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="policy-section">
+          <h3>Routing profiles</h3>
+          <PolicyTemplateList
+            templates={routingTemplates}
+            onEdit={editRoutingTemplate}
+            onDelete={deletePolicyTemplate}
+          />
+        </div>
+
+        <div className="policy-section">
+          <h3>Automation profiles</h3>
+          <PolicyTemplateList
+            templates={automationTemplates}
+            onEdit={editAutomationTemplate}
+            onDelete={deletePolicyTemplate}
+          />
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function PolicyTemplateList({
+  templates,
+  onEdit,
+  onDelete,
+}: {
+  templates: ConfiguratorPolicyTemplate[];
+  onEdit: (template: ConfiguratorPolicyTemplate) => void;
+  onDelete: (template: ConfiguratorPolicyTemplate) => void;
+}) {
+  if (templates.length === 0) {
+    return <p className="muted">No profiles yet.</p>;
+  }
+
+  return (
+    <div className="configurator-template-list">
+      {templates.map((template) => (
+        <div className="configurator-template-item" key={template.id}>
+          <div>
+            <strong>{template.name}</strong>
+            <span className="cell-note">
+              {template.isDefault ? 'default' : 'custom'} / updated{' '}
+              {formatDate(template.updatedAt)}
+            </span>
+            <pre className="json-block compact-json">
+              {formatJson(template.payload ?? {})}
+            </pre>
+          </div>
+          <div className="row-actions">
+            <button type="button" onClick={() => onEdit(template)}>
+              Edit
+            </button>
+            <button type="button" onClick={() => onDelete(template)}>
+              Delete
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function WebhookTesterPanel({
   form,
   plans,
@@ -3073,6 +3686,68 @@ function metadataString(
   return typeof value === 'string' && value.trim().length > 0
     ? value.trim()
     : null;
+}
+
+function buildAppPolicyAppPayload(form: AppPolicyAppFormState) {
+  return {
+    name: form.name.trim(),
+    packageName: form.packageName.trim(),
+    platform: form.platform.trim() || 'android',
+    category: optionalString(form.category),
+    notes: optionalString(form.notes),
+    isActive: form.isActive,
+  };
+}
+
+function buildRoutingPolicyPayload(form: RoutingProfileFormState) {
+  return {
+    version: 1,
+    mode: form.mode,
+    includedApps: packageListFromText(form.includedApps),
+    excludedApps: packageListFromText(form.excludedApps),
+  };
+}
+
+function buildAutomationPolicyPayload(form: AutomationProfileFormState) {
+  return {
+    version: 1,
+    autoConnectApps: packageListFromText(form.autoConnectApps),
+    autoDisconnectApps: packageListFromText(form.autoDisconnectApps),
+    requiresUsageAccess: true,
+  };
+}
+
+function packageListFromText(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\r\n,]+/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0),
+    ),
+  );
+}
+
+function packageTextFromPayload(value: unknown): string {
+  if (!Array.isArray(value)) {
+    return '';
+  }
+
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .join('\n');
+}
+
+function policyPayloadString(
+  payload: Record<string, unknown>,
+  key: string,
+  fallback: string,
+): string {
+  const value = payload[key];
+
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : fallback;
 }
 
 function buildPlanPayload(form: PlanFormState) {

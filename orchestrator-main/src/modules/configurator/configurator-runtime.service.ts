@@ -9,6 +9,10 @@ import {
   DeviceConfigEntity,
   DeviceConfigStatus,
 } from '../../database/entities/device-config.entity';
+import {
+  PolicyTemplateEntity,
+  PolicyTemplateType,
+} from '../../database/entities/policy-template.entity';
 import { ProvisionEntity, ProvisionStatus } from '../../database/entities/provision.entity';
 import {
   ProviderAccessEntity,
@@ -37,6 +41,8 @@ export class ConfiguratorRuntimeService {
     private readonly deviceConfigsRepository: Repository<DeviceConfigEntity>,
     @InjectRepository(ProviderAccessEntity)
     private readonly providerAccessesRepository: Repository<ProviderAccessEntity>,
+    @InjectRepository(PolicyTemplateEntity)
+    private readonly policyTemplatesRepository: Repository<PolicyTemplateEntity>,
     @Inject(VPN_CLIENT)
     private readonly vpnClient: VpnClient,
     private readonly vpnNodesService: VpnNodesService,
@@ -130,6 +136,7 @@ export class ConfiguratorRuntimeService {
     try {
       const runtime = await this.buildRuntimeSnapshot(provision);
       const revision = this.buildRevision(provision, runtime);
+      const clientPolicies = await this.resolveDefaultClientPolicies();
 
       await this.deviceConfigsRepository.save({
         ...deviceConfig,
@@ -141,8 +148,8 @@ export class ConfiguratorRuntimeService {
         protocol: runtime.protocol,
         nodeId: provision.vpnNodeId ?? null,
         configRevision: revision,
-        routingPolicyJson: this.defaultRoutingPolicy(),
-        automationPolicyJson: this.defaultAutomationPolicy(),
+        routingPolicyJson: clientPolicies.routingPolicy,
+        automationPolicyJson: clientPolicies.automationPolicy,
         telemetryProfileJson: this.defaultTelemetryProfile(),
         lastError: null,
         generatedAt: now,
@@ -167,6 +174,9 @@ export class ConfiguratorRuntimeService {
         protocol: runtime.protocol,
         configRevision: revision,
         runtimePayload: runtime.payload,
+        routingPolicy: clientPolicies.routingPolicy,
+        automationPolicy: clientPolicies.automationPolicy,
+        telemetryProfile: this.defaultTelemetryProfile(),
         generatedAt: now.toISOString(),
       });
     } catch (error) {
@@ -296,6 +306,7 @@ export class ConfiguratorRuntimeService {
         providerMaterial.subscriptionLink,
       );
       const revision = this.buildRevision(provision, runtime, device);
+      const clientPolicies = await this.resolveDefaultClientPolicies();
 
       await this.deviceConfigsRepository.save({
         ...deviceConfig,
@@ -306,8 +317,8 @@ export class ConfiguratorRuntimeService {
         protocol: runtime.protocol,
         nodeId: provision.vpnNodeId ?? null,
         configRevision: revision,
-        routingPolicyJson: this.defaultRoutingPolicy(),
-        automationPolicyJson: this.defaultAutomationPolicy(),
+        routingPolicyJson: clientPolicies.routingPolicy,
+        automationPolicyJson: clientPolicies.automationPolicy,
         telemetryProfileJson: this.defaultTelemetryProfile(),
         lastError: null,
         generatedAt: now,
@@ -340,6 +351,9 @@ export class ConfiguratorRuntimeService {
           protocol: runtime.protocol,
           configRevision: revision,
           runtimePayload: runtime.payload,
+          routingPolicy: clientPolicies.routingPolicy,
+          automationPolicy: clientPolicies.automationPolicy,
+          telemetryProfile: this.defaultTelemetryProfile(),
           generatedAt: now.toISOString(),
         },
         device,
@@ -1213,18 +1227,53 @@ export class ConfiguratorRuntimeService {
     return stream;
   }
 
+  private async resolveDefaultClientPolicies(): Promise<{
+    routingPolicy: Record<string, unknown>;
+    automationPolicy: Record<string, unknown>;
+  }> {
+    const [routingPolicy, automationPolicy] = await Promise.all([
+      this.defaultPolicyTemplate('routing', this.defaultRoutingPolicy()),
+      this.defaultPolicyTemplate('automation', this.defaultAutomationPolicy()),
+    ]);
+
+    return {
+      routingPolicy,
+      automationPolicy,
+    };
+  }
+
+  private async defaultPolicyTemplate(
+    type: PolicyTemplateType,
+    fallback: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const template = await this.policyTemplatesRepository.findOne({
+      where: {
+        type,
+        isDefault: true,
+      },
+      order: {
+        updatedAt: 'DESC',
+      },
+    });
+
+    return template?.payloadJson ?? fallback;
+  }
+
   private defaultRoutingPolicy(): Record<string, unknown> {
     return {
-      mode: 'split_tunnel',
-      default_enabled_apps: [],
-      default_excluded_apps: [],
+      version: 1,
+      mode: 'selected_apps',
+      includedApps: [],
+      excludedApps: [],
     };
   }
 
   private defaultAutomationPolicy(): Record<string, unknown> {
     return {
-      auto_enable_apps: [],
-      auto_disable_apps: [],
+      version: 1,
+      autoConnectApps: [],
+      autoDisconnectApps: [],
+      requiresUsageAccess: true,
     };
   }
 
@@ -1313,6 +1362,9 @@ export class ConfiguratorRuntimeService {
       protocol: string | null;
       configRevision: string | null;
       runtimePayload: string | null;
+      routingPolicy?: Record<string, unknown> | null;
+      automationPolicy?: Record<string, unknown> | null;
+      telemetryProfile?: Record<string, unknown> | null;
       generatedAt: string | null;
     },
     device?: ConfiguratorDeviceIdentity,
@@ -1331,6 +1383,9 @@ export class ConfiguratorRuntimeService {
       nodeLabel: provision.vpnNode?.name ?? provision.vpnNode?.host ?? null,
       nodeCountry: provision.vpnNode?.country ?? null,
       nodeHost: provision.vpnNode?.host ?? null,
+      routingPolicy: payload.routingPolicy ?? null,
+      automationPolicy: payload.automationPolicy ?? null,
+      telemetryProfile: payload.telemetryProfile ?? null,
       generatedAt: payload.generatedAt,
     };
   }

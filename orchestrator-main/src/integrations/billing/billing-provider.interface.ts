@@ -14,6 +14,9 @@ export interface BillingConfigSnapshot {
   nodeLabel?: string | null;
   nodeCountry?: string | null;
   nodeHost?: string | null;
+  routingPolicy?: Record<string, unknown> | null;
+  automationPolicy?: Record<string, unknown> | null;
+  telemetryProfile?: Record<string, unknown> | null;
   generatedAt?: string | null;
 }
 

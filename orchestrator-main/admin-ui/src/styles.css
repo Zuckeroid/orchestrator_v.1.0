@@ -95,6 +95,7 @@ body {
 
 button,
 input,
+textarea,
 select {
   font: inherit;
   letter-spacing: 0;
@@ -279,6 +280,7 @@ label {
 }
 
 input,
+textarea,
 select {
   width: 100%;
   min-height: 38px;
@@ -289,13 +291,24 @@ select {
   color: var(--color-text);
 }
 
+textarea {
+  resize: vertical;
+}
+
 input:focus,
+textarea:focus,
 select:focus {
   border-color: var(--color-primary);
   outline: 2px solid var(--color-focus);
 }
 
 input:disabled {
+  background: var(--color-input-disabled-bg);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+textarea:disabled {
   background: var(--color-input-disabled-bg);
   color: var(--color-text-muted);
   cursor: not-allowed;
@@ -473,6 +486,12 @@ input[type="checkbox"] {
   align-self: start;
   display: grid;
   gap: 12px;
+}
+
+.policy-form-stack {
+  display: grid;
+  gap: 18px;
+  align-self: start;
 }
 
 .form-panel button {
@@ -858,6 +877,16 @@ td {
   gap: 10px;
 }
 
+.policy-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.policy-section:first-of-type {
+  margin-top: 0;
+}
+
 .provider-link-button {
   display: inline-flex;
   align-items: center;
@@ -924,6 +953,11 @@ td {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.json-block.compact-json {
+  max-height: 180px;
+  margin-top: 10px;
 }
 
 @media (max-width: 1180px) {

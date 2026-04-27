@@ -1,8 +1,18 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Not, Repository } from 'typeorm';
+import { AppPolicyAppEntity } from '../../database/entities/app-policy-app.entity';
 import { DeviceConfigEntity } from '../../database/entities/device-config.entity';
-import { PolicyTemplateEntity } from '../../database/entities/policy-template.entity';
+import {
+  PolicyTemplateEntity,
+  PolicyTemplateType,
+} from '../../database/entities/policy-template.entity';
 import { ProvisionEntity } from '../../database/entities/provision.entity';
 import { ProviderAccessEntity } from '../../database/entities/provider-access.entity';
 import {
@@ -23,6 +33,8 @@ export class ConfiguratorService {
   constructor(
     @InjectRepository(ProvisionEntity)
     private readonly provisionsRepository: Repository<ProvisionEntity>,
+    @InjectRepository(AppPolicyAppEntity)
+    private readonly appPolicyAppsRepository: Repository<AppPolicyAppEntity>,
     @InjectRepository(PolicyTemplateEntity)
     private readonly policyTemplatesRepository: Repository<PolicyTemplateEntity>,
     @Inject(BILLING_PROVIDER)
@@ -91,22 +103,135 @@ export class ConfiguratorService {
     return this.mapServiceDetail(provision);
   }
 
-  async listPolicyTemplates(): Promise<ConfiguratorPolicyTemplateSummary[]> {
-    const templates = await this.policyTemplatesRepository.find({
+  async listPolicyApps(): Promise<AppPolicyAppSummary[]> {
+    const apps = await this.appPolicyAppsRepository.find({
       order: {
-        type: 'ASC',
+        isActive: 'DESC',
+        category: 'ASC',
         name: 'ASC',
       },
     });
 
-    return templates.map((template) => ({
-      id: template.id,
-      name: template.name,
-      type: template.type,
-      isDefault: template.isDefault,
-      createdAt: template.createdAt.toISOString(),
-      updatedAt: template.updatedAt.toISOString(),
-    }));
+    return apps.map((app) => this.mapPolicyApp(app));
+  }
+
+  async createPolicyApp(input: CreateAppPolicyAppInput): Promise<AppPolicyAppSummary> {
+    const packageName = this.normalizeRequired(input.packageName, 'Package name');
+    await this.ensurePackageNameAvailable(packageName);
+
+    const app = this.appPolicyAppsRepository.create({
+      name: this.normalizeRequired(input.name, 'Application name'),
+      packageName,
+      platform: this.normalizeOptional(input.platform) ?? 'android',
+      category: this.normalizeOptional(input.category),
+      notes: this.normalizeOptional(input.notes),
+      isActive: input.isActive ?? true,
+    });
+
+    return this.mapPolicyApp(await this.appPolicyAppsRepository.save(app));
+  }
+
+  async updatePolicyApp(
+    id: string,
+    input: UpdateAppPolicyAppInput,
+  ): Promise<AppPolicyAppSummary> {
+    const app = await this.getExistingPolicyApp(id);
+
+    if (input.packageName !== undefined) {
+      const packageName = this.normalizeRequired(input.packageName, 'Package name');
+      await this.ensurePackageNameAvailable(packageName, id);
+      app.packageName = packageName;
+    }
+    if (input.name !== undefined) {
+      app.name = this.normalizeRequired(input.name, 'Application name');
+    }
+    if (input.platform !== undefined) {
+      app.platform = this.normalizeOptional(input.platform) ?? 'android';
+    }
+    if (input.category !== undefined) {
+      app.category = this.normalizeOptional(input.category);
+    }
+    if (input.notes !== undefined) {
+      app.notes = this.normalizeOptional(input.notes);
+    }
+    if (input.isActive !== undefined) {
+      app.isActive = input.isActive;
+    }
+
+    return this.mapPolicyApp(await this.appPolicyAppsRepository.save(app));
+  }
+
+  async deletePolicyApp(id: string): Promise<void> {
+    const app = await this.getExistingPolicyApp(id);
+    await this.appPolicyAppsRepository.remove(app);
+  }
+
+  async listPolicyTemplates(
+    type?: PolicyTemplateType,
+  ): Promise<ConfiguratorPolicyTemplateSummary[]> {
+    const where: FindOptionsWhere<PolicyTemplateEntity> | undefined = type
+      ? { type }
+      : undefined;
+    const templates = await this.policyTemplatesRepository.find({
+      where,
+      order: {
+        type: 'ASC',
+        isDefault: 'DESC',
+        name: 'ASC',
+      },
+    });
+
+    return templates.map((template) => this.mapPolicyTemplate(template));
+  }
+
+  async createPolicyTemplate(
+    input: CreatePolicyTemplateInput,
+  ): Promise<ConfiguratorPolicyTemplateSummary> {
+    const template = this.policyTemplatesRepository.create({
+      name: this.normalizeRequired(input.name, 'Policy template name'),
+      type: input.type,
+      payloadJson: input.payload,
+      isDefault: input.isDefault ?? false,
+    });
+
+    if (template.isDefault) {
+      await this.clearDefaultTemplate(template.type);
+    }
+
+    return this.mapPolicyTemplate(await this.policyTemplatesRepository.save(template));
+  }
+
+  async updatePolicyTemplate(
+    id: string,
+    input: UpdatePolicyTemplateInput,
+  ): Promise<ConfiguratorPolicyTemplateSummary> {
+    const template = await this.getExistingPolicyTemplate(id);
+
+    if (input.name !== undefined) {
+      template.name = this.normalizeRequired(input.name, 'Policy template name');
+    }
+    if (input.type !== undefined) {
+      template.type = input.type;
+    }
+    if (input.payload !== undefined) {
+      template.payloadJson = input.payload;
+    }
+    if (input.isDefault !== undefined) {
+      template.isDefault = input.isDefault;
+    }
+
+    if (template.isDefault) {
+      await this.clearDefaultTemplate(template.type, template.id);
+    }
+
+    return this.mapPolicyTemplate(
+      await this.policyTemplatesRepository.save(template),
+    );
+  }
+
+  async deletePolicyTemplate(id: string): Promise<void> {
+    const template = await this.getExistingPolicyTemplate(id);
+    await this.policyTemplatesRepository.remove(template);
   }
 
   async regenerateServiceConfig(id: string): Promise<ConfiguratorServiceDetail> {
@@ -265,6 +390,67 @@ export class ConfiguratorService {
     ).sort((left, right) => left.localeCompare(right));
   }
 
+  private mapPolicyApp(app: AppPolicyAppEntity): AppPolicyAppSummary {
+    return {
+      id: app.id,
+      name: app.name,
+      packageName: app.packageName,
+      platform: app.platform,
+      category: app.category ?? null,
+      notes: app.notes ?? null,
+      isActive: app.isActive,
+      createdAt: app.createdAt.toISOString(),
+      updatedAt: app.updatedAt.toISOString(),
+    };
+  }
+
+  private mapPolicyTemplate(
+    template: PolicyTemplateEntity,
+  ): ConfiguratorPolicyTemplateSummary {
+    return {
+      id: template.id,
+      name: template.name,
+      type: template.type,
+      payload: template.payloadJson,
+      isDefault: template.isDefault,
+      createdAt: template.createdAt.toISOString(),
+      updatedAt: template.updatedAt.toISOString(),
+    };
+  }
+
+  private async ensurePackageNameAvailable(
+    packageName: string,
+    currentId?: string,
+  ): Promise<void> {
+    const existing = await this.appPolicyAppsRepository.findOne({
+      where: {
+        packageName,
+        ...(currentId ? { id: Not(currentId) } : {}),
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException(`Application package already exists: ${packageName}`);
+    }
+  }
+
+  private async clearDefaultTemplate(
+    type: PolicyTemplateType,
+    currentId?: string,
+  ): Promise<void> {
+    const query = this.policyTemplatesRepository
+      .createQueryBuilder()
+      .update(PolicyTemplateEntity)
+      .set({ isDefault: false })
+      .where('type = :type', { type });
+
+    if (currentId) {
+      query.andWhere('id != :currentId', { currentId });
+    }
+
+    await query.execute();
+  }
+
   private async getExistingProvision(id: string): Promise<ProvisionEntity> {
     const provision = await this.provisionsRepository.findOne({
       where: { id },
@@ -276,6 +462,89 @@ export class ConfiguratorService {
 
     return provision;
   }
+
+  private async getExistingPolicyApp(id: string): Promise<AppPolicyAppEntity> {
+    const app = await this.appPolicyAppsRepository.findOneBy({ id });
+    if (!app) {
+      throw new NotFoundException(`Application policy app not found: ${id}`);
+    }
+
+    return app;
+  }
+
+  private async getExistingPolicyTemplate(
+    id: string,
+  ): Promise<PolicyTemplateEntity> {
+    const template = await this.policyTemplatesRepository.findOneBy({ id });
+    if (!template) {
+      throw new NotFoundException(`Policy template not found: ${id}`);
+    }
+
+    return template;
+  }
+
+  private normalizeRequired(value: string, label: string): string {
+    const normalized = this.normalizeOptional(value);
+    if (!normalized) {
+      throw new BadRequestException(`${label} is required`);
+    }
+
+    return normalized;
+  }
+
+  private normalizeOptional(value: string | null | undefined): string | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    const normalized = String(value).trim();
+
+    return normalized.length > 0 ? normalized : null;
+  }
+}
+
+export interface CreateAppPolicyAppInput {
+  name: string;
+  packageName: string;
+  platform?: string;
+  category?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
+}
+
+export interface UpdateAppPolicyAppInput {
+  name?: string;
+  packageName?: string;
+  platform?: string;
+  category?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
+}
+
+export interface CreatePolicyTemplateInput {
+  name: string;
+  type: PolicyTemplateType;
+  payload: Record<string, unknown>;
+  isDefault?: boolean;
+}
+
+export interface UpdatePolicyTemplateInput {
+  name?: string;
+  type?: PolicyTemplateType;
+  payload?: Record<string, unknown>;
+  isDefault?: boolean;
+}
+
+export interface AppPolicyAppSummary {
+  id: string;
+  name: string;
+  packageName: string;
+  platform: string;
+  category: string | null;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ConfiguratorServiceSummary {
@@ -372,6 +641,7 @@ export interface ConfiguratorPolicyTemplateSummary {
   id: string;
   name: string;
   type: string;
+  payload: Record<string, unknown>;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;

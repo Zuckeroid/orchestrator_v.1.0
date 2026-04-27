@@ -348,7 +348,20 @@ export interface ConfiguratorPolicyTemplate {
   id: string;
   name: string;
   type: string;
+  payload: Record<string, unknown>;
   isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AppPolicyApp {
+  id: string;
+  name: string;
+  packageName: string;
+  platform: string;
+  category?: string | null;
+  notes?: string | null;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }

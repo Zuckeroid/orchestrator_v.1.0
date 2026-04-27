@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AppPolicyAppEntity } from './entities/app-policy-app.entity';
 import { AuditLogEntity } from './entities/audit-log.entity';
 import { DeviceConfigEntity } from './entities/device-config.entity';
 import { JobEntity } from './entities/job.entity';
@@ -13,6 +14,7 @@ import { StorageBackendEntity } from './entities/storage-backend.entity';
 import { VpnNodeEntity } from './entities/vpn-node.entity';
 
 export const DATABASE_ENTITIES = [
+  AppPolicyAppEntity,
   AuditLogEntity,
   DeviceConfigEntity,
   JobEntity,
