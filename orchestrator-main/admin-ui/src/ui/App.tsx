@@ -4,6 +4,7 @@ import {
   AuditLog,
   BillingWebhookEvent,
   BillingWebhookPayload,
+  ConfiguratorProviderAccess,
   ConfiguratorPolicyTemplate,
   ConfiguratorServiceDetail,
   ConfiguratorServiceSummary,
@@ -1121,7 +1122,7 @@ function NodesPanel({
           />
         </label>
         <label>
-          Subscription URL prefix
+          Provider subscription URL prefix
           <input
             placeholder="https://109.120.140.251:2096/sub_9fK3xL8pQ2mZ7rT"
             value={form.subscriptionBaseUrl}
@@ -1597,18 +1598,23 @@ function ProvisionsPanel({
                 </dl>
               </div>
               <div className="detail-block">
-                <h3>Links & State</h3>
+                <h3>Provider Diagnostics</h3>
                 <dl className="detail-list">
-                  <dt>Subscription URL</dt>
+                  <dt>Provider URL</dt>
                   <dd>
                     {selectedProvision.subscriptionLink ? (
-                      <a
-                        href={selectedProvision.subscriptionLink}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {selectedProvision.subscriptionLink}
-                      </a>
+                      <>
+                        <a
+                          href={selectedProvision.subscriptionLink}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {selectedProvision.subscriptionLink}
+                        </a>
+                        <span className="cell-note">
+                          Diagnostic only. Apps use generated runtime payload.
+                        </span>
+                      </>
                     ) : (
                       'none'
                     )}
@@ -1626,7 +1632,7 @@ function ProvisionsPanel({
                       }
                       type="button"
                     >
-                      Open subscription
+                      Open provider link
                     </button>
                   ) : null}
                   <button
@@ -1988,16 +1994,21 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
                       'none'
                     )}
                   </dd>
-                  <dt>Legacy link</dt>
+                  <dt>Provider URL</dt>
                   <dd>
                     {selectedService.subscriptionLink ? (
-                      <a
-                        href={selectedService.subscriptionLink}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {selectedService.subscriptionLink}
-                      </a>
+                      <>
+                        <a
+                          href={selectedService.subscriptionLink}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          {selectedService.subscriptionLink}
+                        </a>
+                        <span className="cell-note">
+                          Service diagnostic only. Device runtime payload is the app contract.
+                        </span>
+                      </>
                     ) : (
                       'none'
                     )}
@@ -2098,8 +2109,11 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
                           <dd>
                             {deviceConfig.providerAccesses.length > 0 ? (
                               <div className="configurator-provider-list">
-                                {deviceConfig.providerAccesses.map((providerAccess) => (
-                                  <div key={providerAccess.id}>
+                                {deviceConfig.providerAccesses.map((providerAccess) => {
+                                  const providerLink = providerDiagnosticLink(providerAccess);
+
+                                  return (
+                                    <div key={providerAccess.id}>
                                     <strong>{providerAccess.provider}</strong>{' '}
                                     <span
                                       className={`status-pill ${statusTone(providerAccess.status)}`}
@@ -2111,8 +2125,20 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
                                       {providerAccess.providerUserId ?? 'none'} · synced{' '}
                                       {formatDate(providerAccess.lastSyncedAt)}
                                     </span>
-                                  </div>
-                                ))}
+                                      {providerLink ? (
+                                        <button
+                                          className="provider-link-button"
+                                          onClick={() =>
+                                            window.open(providerLink, '_blank', 'noopener,noreferrer')
+                                          }
+                                          type="button"
+                                        >
+                                          Open provider link
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : (
                               'none'
@@ -3027,6 +3053,26 @@ function formatMaybeJsonText(value?: string | null): string {
   } catch {
     return value;
   }
+}
+
+function providerDiagnosticLink(
+  providerAccess: ConfiguratorProviderAccess,
+): string | null {
+  return (
+    metadataString(providerAccess.providerMetadata, 'subscriptionLink') ??
+    metadataString(providerAccess.providerMetadata, 'resolvedLink')
+  );
+}
+
+function metadataString(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string,
+): string | null {
+  const value = metadata?.[key];
+
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
 function buildPlanPayload(form: PlanFormState) {

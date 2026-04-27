@@ -858,6 +858,15 @@ td {
   gap: 10px;
 }
 
+.provider-link-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
 .detail-list {
   display: grid;
   grid-template-columns: minmax(110px, 140px) minmax(0, 1fr);
