@@ -2,6 +2,13 @@
 
 Backend and admin UI for provisioning My Storage users from billing events.
 
+## Architecture docs
+
+The v2 direction for device-aware runtime configuration is documented here:
+
+- [Subscription Configurator v2](docs/subscription-configurator-v2.md)
+- [Appbridge Bundle v2](docs/appbridge-bundle-v2.md)
+
 ## VPS deployment
 
 1. Clone the repository:
