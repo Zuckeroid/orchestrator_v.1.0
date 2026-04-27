@@ -557,6 +557,66 @@ input[type="checkbox"] {
   font-weight: 800;
 }
 
+.automation-template-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.automation-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.automation-template-bucket {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 118px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-panel-bg);
+}
+
+.automation-template-bucket h4 {
+  margin: 0;
+}
+
+.package-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.package-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--color-panel-muted);
+}
+
+.package-chip .app-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.package-chip span:last-child {
+  display: grid;
+  min-width: 0;
+}
+
+.package-chip span:last-child span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .detail-actions button {
   min-height: 38px;
   white-space: nowrap;

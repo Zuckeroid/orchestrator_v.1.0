@@ -168,7 +168,7 @@ const emptyRoutingProfileForm: RoutingProfileFormState = {
 };
 
 const emptyAutomationProfileForm: AutomationProfileFormState = {
-  name: 'Default auto connect',
+  name: 'Default automation',
   autoConnectApps: '',
   autoDisconnectApps: '',
   isDefault: true,
@@ -2370,7 +2370,7 @@ function AppPoliciesPanel({
     mode === 'routing' ? routingTemplates : automationTemplates;
   const policyTitle = mode === 'routing' ? 'App Routing' : 'Auto On/Off';
   const profileTitle =
-    mode === 'routing' ? 'Routing profiles' : 'Automation profiles';
+    mode === 'routing' ? 'Routing profiles' : 'Automation profile';
   const profileCountLabel =
     mode === 'routing'
       ? `routing: ${routingTemplates.length}`
@@ -2951,11 +2951,20 @@ function AppPoliciesPanel({
 
         <div className="policy-section">
           <h3>{profileTitle}</h3>
-          <PolicyTemplateList
-            templates={selectedTemplates}
-            onEdit={mode === 'routing' ? editRoutingTemplate : editAutomationTemplate}
-            onDelete={deletePolicyTemplate}
-          />
+          {mode === 'automation' ? (
+            <AutomationTemplateList
+              apps={apps}
+              templates={automationTemplates}
+              onEdit={editAutomationTemplate}
+              onDelete={deletePolicyTemplate}
+            />
+          ) : (
+            <PolicyTemplateList
+              templates={selectedTemplates}
+              onEdit={editRoutingTemplate}
+              onDelete={deletePolicyTemplate}
+            />
+          )}
         </div>
       </section>
     </section>
@@ -2979,6 +2988,97 @@ function AppIcon({ app }: { app: AppPolicyApp }) {
   }
 
   return <span className="app-icon app-icon-fallback">{appIconInitials(app.name)}</span>;
+}
+
+function AutomationTemplateList({
+  templates,
+  apps,
+  onEdit,
+  onDelete,
+}: {
+  templates: ConfiguratorPolicyTemplate[];
+  apps: AppPolicyApp[];
+  onEdit: (template: ConfiguratorPolicyTemplate) => void;
+  onDelete: (template: ConfiguratorPolicyTemplate) => void;
+}) {
+  if (templates.length === 0) {
+    return <p className="muted">No automation profile yet.</p>;
+  }
+
+  return (
+    <div className="configurator-template-list">
+      {templates.map((template) => {
+        const autoOnApps = packageListFromPayload(
+          template.payload.autoConnectApps ?? template.payload.auto_enable_apps,
+        );
+        const autoOffApps = packageListFromPayload(
+          template.payload.autoDisconnectApps ??
+            template.payload.auto_disable_apps,
+        );
+
+        return (
+          <div className="configurator-template-item" key={template.id}>
+            <div className="automation-template-body">
+              <strong>{automationTemplateName(template.name)}</strong>
+              <span className="cell-note">
+                {template.isDefault ? 'default' : 'custom'} / updated{' '}
+                {formatDate(template.updatedAt)}
+              </span>
+              <div className="automation-template-grid">
+                <div className="automation-template-bucket">
+                  <h4>Default Auto ON</h4>
+                  <PackageChipList apps={apps} packages={autoOnApps} />
+                </div>
+                <div className="automation-template-bucket">
+                  <h4>Default Auto OFF</h4>
+                  <p className="cell-note">Priority over Auto ON</p>
+                  <PackageChipList apps={apps} packages={autoOffApps} />
+                </div>
+              </div>
+            </div>
+            <div className="row-actions">
+              <button type="button" onClick={() => onEdit(template)}>
+                Edit
+              </button>
+              <button type="button" onClick={() => onDelete(template)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PackageChipList({
+  packages,
+  apps,
+}: {
+  packages: string[];
+  apps: AppPolicyApp[];
+}) {
+  if (packages.length === 0) {
+    return <span className="muted">No apps selected.</span>;
+  }
+
+  return (
+    <div className="package-chip-list">
+      {packages.map((packageName) => {
+        const app = apps.find((item) => item.packageName === packageName);
+
+        return (
+          <span className="package-chip" key={packageName}>
+            {app ? <AppIcon app={app} /> : null}
+            <span>
+              <strong>{app?.name ?? packageName}</strong>
+              {app ? <span>{packageName}</span> : null}
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 function PolicyTemplateList({
@@ -3866,6 +3966,16 @@ function packageListFromText(value: string): string[] {
   );
 }
 
+function packageListFromPayload(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return packageListFromText(
+    value.filter((item): item is string => typeof item === 'string').join('\n'),
+  );
+}
+
 function packageTextHas(value: string, packageName: string): boolean {
   return packageListFromText(value).includes(packageName);
 }
@@ -3905,6 +4015,10 @@ function policyPayloadString(
   return typeof value === 'string' && value.trim().length > 0
     ? value.trim()
     : fallback;
+}
+
+function automationTemplateName(name: string): string {
+  return name === 'Default auto connect' ? 'Default automation' : name;
 }
 
 function buildPlanPayload(form: PlanFormState) {
