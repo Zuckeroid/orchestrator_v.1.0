@@ -18,6 +18,7 @@ export interface BillingConfigSnapshot {
   automationPolicy?: Record<string, unknown> | null;
   connectionProfiles?: Record<string, unknown> | null;
   telemetryProfile?: Record<string, unknown> | null;
+  domainBundle?: unknown | null;
   generatedAt?: string | null;
 }
 

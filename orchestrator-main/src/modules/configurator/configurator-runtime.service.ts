@@ -26,6 +26,7 @@ import {
 } from '../../integrations/vpn/vpn-client.interface';
 import { VPN_CLIENT } from '../../integrations/vpn/vpn.module';
 import { VpnNodesService } from '../nodes/vpn-nodes.service';
+import { DomainEndpointsService } from './domain-endpoints.service';
 
 @Injectable()
 export class ConfiguratorRuntimeService {
@@ -61,6 +62,7 @@ export class ConfiguratorRuntimeService {
     @Inject(VPN_CLIENT)
     private readonly vpnClient: VpnClient,
     private readonly vpnNodesService: VpnNodesService,
+    private readonly domainEndpointsService: DomainEndpointsService,
   ) {}
 
   async syncProvisionSnapshot(provisionId: string): Promise<BillingConfigSnapshot | null> {
@@ -1808,7 +1810,7 @@ export class ConfiguratorRuntimeService {
     return `rev_${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}_${hash}`;
   }
 
-  private buildBillingSnapshot(
+  private async buildBillingSnapshot(
     provision: ProvisionEntity,
     payload: {
       ready: boolean;
@@ -1823,7 +1825,7 @@ export class ConfiguratorRuntimeService {
       generatedAt: string | null;
     },
     device?: ConfiguratorDeviceIdentity,
-  ): BillingConfigSnapshot {
+  ): Promise<BillingConfigSnapshot> {
     return {
       ready: payload.ready,
       runtimeType: payload.runtimeType,
@@ -1842,6 +1844,7 @@ export class ConfiguratorRuntimeService {
       automationPolicy: payload.automationPolicy ?? null,
       connectionProfiles: payload.connectionProfiles ?? null,
       telemetryProfile: payload.telemetryProfile ?? null,
+      domainBundle: await this.domainEndpointsService.buildDomainBundle(),
       generatedAt: payload.generatedAt,
     };
   }

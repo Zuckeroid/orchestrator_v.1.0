@@ -9,6 +9,7 @@ import {
   ConfiguratorPolicyTemplate,
   ConfiguratorServiceDetail,
   ConfiguratorServiceSummary,
+  DomainEndpoint,
   HealthData,
   PaginatedResult,
   Plan,
@@ -29,6 +30,7 @@ type TabId =
   | 'configurator'
   | 'app-routing'
   | 'app-automation'
+  | 'domains'
   | 'webhook'
   | 'events'
   | 'audit';
@@ -105,6 +107,16 @@ interface AutomationProfileFormState {
   isDefault: boolean;
 }
 
+interface DomainEndpointFormState {
+  purpose: 'api' | 'web';
+  role: 'primary' | 'backup';
+  label: string;
+  url: string;
+  priority: string;
+  isActive: boolean;
+  notes: string;
+}
+
 interface ViewState {
   health?: HealthData;
   queue?: QueueOverview;
@@ -173,6 +185,16 @@ const emptyAutomationProfileForm: AutomationProfileFormState = {
   autoConnectApps: '',
   autoDisconnectApps: '',
   isDefault: true,
+};
+
+const emptyDomainEndpointForm: DomainEndpointFormState = {
+  purpose: 'api',
+  role: 'backup',
+  label: '',
+  url: '',
+  priority: '100',
+  isActive: true,
+  notes: '',
 };
 
 const emptyNodeForm: VpnNodeFormState = {
@@ -636,6 +658,7 @@ export function App() {
     { id: 'configurator', label: 'Configurator' },
     { id: 'app-routing', label: 'App Routing' },
     { id: 'app-automation', label: 'Auto On/Off' },
+    { id: 'domains', label: 'Domains' },
     { id: 'events', label: 'Events' },
     { id: 'webhook', label: 'Webhook Tester' },
     { id: 'audit', label: 'Audit' },
@@ -745,6 +768,9 @@ export function App() {
         ) : null}
         {activeTab === 'app-automation' ? (
           <AppPoliciesPanel mode="automation" refreshVersion={refreshVersion} />
+        ) : null}
+        {activeTab === 'domains' ? (
+          <DomainEndpointsPanel refreshVersion={refreshVersion} />
         ) : null}
         {activeTab === 'webhook' ? (
           <WebhookTesterPanel
@@ -2353,6 +2379,284 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
           pageSize={CONFIGURATOR_PAGE_SIZE}
           onPageChange={setPage}
         />
+      </section>
+    </section>
+  );
+}
+
+function DomainEndpointsPanel({ refreshVersion }: { refreshVersion: number }) {
+  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
+  const [domains, setDomains] = useState<DomainEndpoint[]>([]);
+  const [form, setForm] = useState<DomainEndpointFormState>(
+    emptyDomainEndpointForm,
+  );
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [reloadVersion, setReloadVersion] = useState(0);
+
+  const sortedDomains = [...domains].sort((left, right) => {
+    const purposeCompare = left.purpose.localeCompare(right.purpose);
+    if (purposeCompare !== 0) {
+      return purposeCompare;
+    }
+    return left.priority - right.priority || left.url.localeCompare(right.url);
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDomains() {
+      setLoading(true);
+      setError('');
+      try {
+        const loadedDomains = await api.get<DomainEndpoint[]>('/configurator/domains');
+        if (!cancelled) {
+          setDomains(loadedDomains);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : String(caught));
+          setDomains([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadDomains();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, refreshVersion, reloadVersion]);
+
+  async function saveDomain(event: FormEvent) {
+    event.preventDefault();
+    await runDomainAction('Domain saved', async () => {
+      const payload = {
+        purpose: form.purpose,
+        role: form.role,
+        label: form.label.trim() || null,
+        url: form.url.trim(),
+        priority: Number(form.priority) || 100,
+        isActive: form.isActive,
+        notes: form.notes.trim() || null,
+      };
+
+      if (editingId) {
+        await api.patch<DomainEndpoint>(`/configurator/domains/${editingId}`, payload);
+      } else {
+        await api.post<DomainEndpoint>('/configurator/domains', payload);
+      }
+      resetForm();
+    });
+  }
+
+  async function deleteDomain(domain: DomainEndpoint) {
+    const confirmed = window.confirm(`Delete domain ${domain.url}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    await runDomainAction('Domain deleted', async () => {
+      await api.delete(`/configurator/domains/${domain.id}`);
+      if (editingId === domain.id) {
+        resetForm();
+      }
+    });
+  }
+
+  async function runDomainAction(messageText: string, action: () => Promise<void>) {
+    setSaving(true);
+    setMessage('');
+    setError('');
+    try {
+      await action();
+      setMessage(messageText);
+      setReloadVersion((value) => value + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function editDomain(domain: DomainEndpoint) {
+    setEditingId(domain.id);
+    setForm({
+      purpose: domain.purpose,
+      role: domain.role,
+      label: domain.label ?? '',
+      url: domain.url,
+      priority: String(domain.priority),
+      isActive: domain.isActive,
+      notes: domain.notes ?? '',
+    });
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setForm(emptyDomainEndpointForm);
+  }
+
+  return (
+    <section className="split-layout app-policies-layout">
+      <div className="policy-form-stack">
+        <form className="panel form-panel" onSubmit={saveDomain}>
+          <h2>{editingId ? 'Edit Domain' : 'Add Domain'}</h2>
+          <label>
+            Purpose
+            <select
+              value={form.purpose}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  purpose: event.target.value as DomainEndpointFormState['purpose'],
+                })
+              }
+            >
+              <option value="api">API</option>
+              <option value="web">Web</option>
+            </select>
+          </label>
+          <label>
+            Role
+            <select
+              value={form.role}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  role: event.target.value as DomainEndpointFormState['role'],
+                })
+              }
+            >
+              <option value="primary">Primary</option>
+              <option value="backup">Backup</option>
+            </select>
+          </label>
+          <label>
+            Domain URL
+            <input
+              required
+              placeholder="https://my-storage.org"
+              value={form.url}
+              onChange={(event) => setForm({ ...form, url: event.target.value })}
+            />
+          </label>
+          <label>
+            Label
+            <input
+              placeholder="Billing API"
+              value={form.label}
+              onChange={(event) => setForm({ ...form, label: event.target.value })}
+            />
+          </label>
+          <label>
+            Priority
+            <input
+              min="0"
+              type="number"
+              value={form.priority}
+              onChange={(event) =>
+                setForm({ ...form, priority: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Notes
+            <textarea
+              rows={3}
+              value={form.notes}
+              onChange={(event) => setForm({ ...form, notes: event.target.value })}
+            />
+          </label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={form.isActive}
+              onChange={(event) =>
+                setForm({ ...form, isActive: event.target.checked })
+              }
+            />
+            Active
+          </label>
+          <div className="form-actions">
+            <button className="primary" type="submit" disabled={saving}>
+              {editingId ? 'Save domain' : 'Add domain'}
+            </button>
+            {editingId ? (
+              <button type="button" onClick={resetForm}>
+                Cancel
+              </button>
+            ) : null}
+          </div>
+        </form>
+      </div>
+
+      <section className="panel table-panel">
+        <div className="panel-heading">
+          <h2>Domain Pool</h2>
+          <div className="pill-row">
+            <span className="pill">api: {domains.filter((item) => item.purpose === 'api').length}</span>
+            <span className="pill">web: {domains.filter((item) => item.purpose === 'web').length}</span>
+          </div>
+        </div>
+        <p className="muted">
+          The app receives active API and web domains inside the runtime bundle and
+          falls back through this pool if the current domain is unavailable.
+        </p>
+        {loading ? <p>Loading domains...</p> : null}
+        {error ? <div className="error-line">{error}</div> : null}
+        {message ? <div className="success-line">{message}</div> : null}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Purpose</th>
+                <th>Role</th>
+                <th>URL</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedDomains.map((domain) => (
+                <tr key={domain.id}>
+                  <td>{domain.purpose}</td>
+                  <td>{domain.role}</td>
+                  <td>
+                    <strong>{domain.url}</strong>
+                    {domain.label ? <span className="cell-note">{domain.label}</span> : null}
+                  </td>
+                  <td>{domain.priority}</td>
+                  <td>
+                    <span className={`status-pill ${domain.isActive ? 'green' : 'slate'}`}>
+                      {domain.isActive ? 'active' : 'inactive'}
+                    </span>
+                  </td>
+                  <td>{formatDate(domain.updatedAt)}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button type="button" onClick={() => editDomain(domain)}>
+                        Edit
+                      </button>
+                      <button type="button" onClick={() => void deleteDomain(domain)}>
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </section>
   );

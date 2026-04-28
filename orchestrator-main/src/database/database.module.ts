@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppPolicyAppEntity } from './entities/app-policy-app.entity';
 import { AuditLogEntity } from './entities/audit-log.entity';
 import { DeviceConfigEntity } from './entities/device-config.entity';
+import { DomainEndpointEntity } from './entities/domain-endpoint.entity';
 import { JobEntity } from './entities/job.entity';
 import { PlanEntity } from './entities/plan.entity';
 import { ProcessedEventEntity } from './entities/processed-event.entity';
@@ -17,6 +18,7 @@ export const DATABASE_ENTITIES = [
   AppPolicyAppEntity,
   AuditLogEntity,
   DeviceConfigEntity,
+  DomainEndpointEntity,
   JobEntity,
   PlanEntity,
   PolicyTemplateEntity,

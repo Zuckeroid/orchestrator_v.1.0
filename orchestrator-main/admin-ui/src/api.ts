@@ -368,6 +368,19 @@ export interface AppPolicyApp {
   updatedAt: string;
 }
 
+export interface DomainEndpoint {
+  id: string;
+  purpose: 'api' | 'web';
+  role: 'primary' | 'backup';
+  label?: string | null;
+  url: string;
+  priority: number;
+  isActive: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ProcessedEvent {
   id: string;
   eventId: string;

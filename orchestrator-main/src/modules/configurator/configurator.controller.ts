@@ -12,15 +12,21 @@ import {
 } from '@nestjs/common';
 import { AdminApiKeyGuard } from '../../common/guards/admin-api-key.guard';
 import { CreateAppPolicyAppDto } from './dto/create-app-policy-app.dto';
+import { CreateDomainEndpointDto } from './dto/create-domain-endpoint.dto';
 import { CreatePolicyTemplateDto } from './dto/create-policy-template.dto';
 import { UpdateAppPolicyAppDto } from './dto/update-app-policy-app.dto';
+import { UpdateDomainEndpointDto } from './dto/update-domain-endpoint.dto';
 import { UpdatePolicyTemplateDto } from './dto/update-policy-template.dto';
 import { ConfiguratorService } from './configurator.service';
+import { DomainEndpointsService } from './domain-endpoints.service';
 
 @Controller('configurator')
 @UseGuards(AdminApiKeyGuard)
 export class ConfiguratorController {
-  constructor(private readonly configuratorService: ConfiguratorService) {}
+  constructor(
+    private readonly configuratorService: ConfiguratorService,
+    private readonly domainEndpointsService: DomainEndpointsService,
+  ) {}
 
   @Get('services')
   async listServices(
@@ -84,6 +90,46 @@ export class ConfiguratorController {
   @Delete('apps/:id')
   async deleteApp(@Param('id', new ParseUUIDPipe()) id: string) {
     await this.configuratorService.deletePolicyApp(id);
+
+    return {
+      success: true,
+      data: {
+        id,
+        deleted: true,
+      },
+    };
+  }
+
+  @Get('domains')
+  async listDomains() {
+    return {
+      success: true,
+      data: await this.domainEndpointsService.listDomainEndpoints(),
+    };
+  }
+
+  @Post('domains')
+  async createDomain(@Body() body: CreateDomainEndpointDto) {
+    return {
+      success: true,
+      data: await this.domainEndpointsService.createDomainEndpoint(body),
+    };
+  }
+
+  @Patch('domains/:id')
+  async updateDomain(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: UpdateDomainEndpointDto,
+  ) {
+    return {
+      success: true,
+      data: await this.domainEndpointsService.updateDomainEndpoint(id, body),
+    };
+  }
+
+  @Delete('domains/:id')
+  async deleteDomain(@Param('id', new ParseUUIDPipe()) id: string) {
+    await this.domainEndpointsService.deleteDomainEndpoint(id);
 
     return {
       success: true,
