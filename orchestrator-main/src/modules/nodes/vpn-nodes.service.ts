@@ -58,7 +58,8 @@ export class VpnNodesService {
   async list(): Promise<VpnNodeEntity[]> {
     return this.repository.find({
       order: {
-        createdAt: 'DESC',
+        name: 'ASC',
+        createdAt: 'ASC',
       },
     });
   }

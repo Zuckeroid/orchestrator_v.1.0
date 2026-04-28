@@ -1,6 +1,9 @@
 .tools/
 fossbilling-main/
+Znet_Application/
+web_template/
 Docker Desktop Installer.exe
+*.lnk
 
 **/node_modules/
 **/dist/
