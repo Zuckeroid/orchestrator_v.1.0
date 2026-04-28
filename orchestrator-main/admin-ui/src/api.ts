@@ -198,6 +198,7 @@ export interface VpnNode {
   apiVersion?: string | null;
   inboundId?: number | null;
   subscriptionBaseUrl?: string | null;
+  usageScope: 'general' | 'away';
   status: string;
   healthStatus: string;
   lastError?: string | null;

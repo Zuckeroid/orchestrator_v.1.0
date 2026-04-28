@@ -63,6 +63,7 @@ export class FossbillingBillingProvider implements BillingProvider {
         node_host: snapshot.nodeHost ?? null,
         routing_policy: snapshot.routingPolicy ?? null,
         automation_policy: snapshot.automationPolicy ?? null,
+        profiles: snapshot.connectionProfiles ?? null,
         telemetry_profile: snapshot.telemetryProfile ?? null,
         generated_at: snapshot.generatedAt ?? null,
       },

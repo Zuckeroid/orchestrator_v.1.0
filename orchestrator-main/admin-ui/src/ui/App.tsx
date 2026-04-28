@@ -76,6 +76,7 @@ interface VpnNodeFormState {
   password: string;
   inboundId: string;
   subscriptionBaseUrl: string;
+  usageScope: 'general' | 'away';
   capacity: string;
 }
 
@@ -183,6 +184,7 @@ const emptyNodeForm: VpnNodeFormState = {
   password: '',
   inboundId: '1',
   subscriptionBaseUrl: '',
+  usageScope: 'general',
   capacity: '100',
 };
 
@@ -445,6 +447,7 @@ export function App() {
       apiVersion: '3x-ui',
       inboundId: Number(nodeForm.inboundId),
       subscriptionBaseUrl: optionalString(nodeForm.subscriptionBaseUrl) ?? null,
+      usageScope: nodeForm.usageScope,
       capacity: Number(nodeForm.capacity),
       ...(username || password
         ? {
@@ -480,6 +483,7 @@ export function App() {
       password: '',
       inboundId: String(node.inboundId ?? 1),
       subscriptionBaseUrl: node.subscriptionBaseUrl ?? '',
+      usageScope: node.usageScope ?? 'general',
       capacity: String(node.capacity),
     });
     setActiveTab('nodes');
@@ -1194,6 +1198,21 @@ function NodesPanel({
           />
         </label>
         <label>
+          Usage scope
+          <select
+            value={form.usageScope}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                usageScope: event.target.value as VpnNodeFormState['usageScope'],
+              })
+            }
+          >
+            <option value="general">General pool</option>
+            <option value="away">Away profile only</option>
+          </select>
+        </label>
+        <label>
           Capacity
           <input
             required
@@ -1257,7 +1276,12 @@ function NodesPanel({
                       <span className="cell-note">{node.subscriptionBaseUrl}</span>
                     ) : null}
                   </td>
-                  <td>{node.status}</td>
+                  <td>
+                    <span className={`status-pill ${node.usageScope === 'away' ? 'teal' : 'green'}`}>
+                      {node.usageScope === 'away' ? 'away only' : 'general'}
+                    </span>
+                    <span className="cell-note">{node.status}</span>
+                  </td>
                   <td>
                     <span
                       className={`status-pill ${healthTone(node.healthStatus)}`}

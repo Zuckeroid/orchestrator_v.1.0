@@ -7,7 +7,10 @@ import {
   IsString,
   Min,
 } from 'class-validator';
-import { VpnNodeStatus } from '../../../database/entities/vpn-node.entity';
+import {
+  VpnNodeStatus,
+  VpnNodeUsageScope,
+} from '../../../database/entities/vpn-node.entity';
 
 const VPN_NODE_STATUSES: VpnNodeStatus[] = [
   'active',
@@ -15,6 +18,7 @@ const VPN_NODE_STATUSES: VpnNodeStatus[] = [
   'blocked',
   'draining',
 ];
+const VPN_NODE_USAGE_SCOPES: VpnNodeUsageScope[] = ['general', 'away'];
 
 export class UpdateVpnNodeDto {
   @IsOptional()
@@ -50,6 +54,10 @@ export class UpdateVpnNodeDto {
   @IsOptional()
   @IsString()
   subscriptionBaseUrl?: string | null;
+
+  @IsOptional()
+  @IsIn(VPN_NODE_USAGE_SCOPES)
+  usageScope?: VpnNodeUsageScope;
 
   @IsOptional()
   @Type(() => Number)

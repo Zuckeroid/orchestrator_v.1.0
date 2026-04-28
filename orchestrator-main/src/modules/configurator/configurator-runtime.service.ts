@@ -152,6 +152,19 @@ export class ConfiguratorRuntimeService {
       const runtime = await this.buildRuntimeSnapshot(provision);
       const revision = this.buildRevision(provision, runtime);
       const clientPolicies = await this.resolveDefaultClientPolicies();
+      const connectionProfiles = this.buildConnectionProfiles({
+        normal: this.profileFromRuntime(
+          'normal',
+          'Обычный режим',
+          true,
+          provision.vpnNode ?? null,
+          runtime,
+          revision,
+          clientPolicies.routingPolicy,
+          clientPolicies.automationPolicy,
+          now.toISOString(),
+        ),
+      });
 
       await this.deviceConfigsRepository.save({
         ...deviceConfig,
@@ -191,6 +204,7 @@ export class ConfiguratorRuntimeService {
         runtimePayload: runtime.payload,
         routingPolicy: clientPolicies.routingPolicy,
         automationPolicy: clientPolicies.automationPolicy,
+        connectionProfiles,
         telemetryProfile: this.defaultTelemetryProfile(),
         generatedAt: now.toISOString(),
       });
@@ -322,6 +336,15 @@ export class ConfiguratorRuntimeService {
       );
       const revision = this.buildRevision(provision, runtime, device);
       const clientPolicies = await this.resolveDefaultClientPolicies();
+      const connectionProfiles = await this.buildDeviceConnectionProfiles(
+        provision,
+        deviceConfig,
+        device,
+        runtime,
+        revision,
+        clientPolicies,
+        now,
+      );
 
       await this.deviceConfigsRepository.save({
         ...deviceConfig,
@@ -355,6 +378,8 @@ export class ConfiguratorRuntimeService {
             sourceCount: runtime.sourceCount,
             protocol: runtime.protocol,
           },
+          provision.vpnNode ?? null,
+          'normal',
         ),
       });
 
@@ -368,6 +393,7 @@ export class ConfiguratorRuntimeService {
           runtimePayload: runtime.payload,
           routingPolicy: clientPolicies.routingPolicy,
           automationPolicy: clientPolicies.automationPolicy,
+          connectionProfiles,
           telemetryProfile: this.defaultTelemetryProfile(),
           generatedAt: now.toISOString(),
         },
@@ -637,18 +663,32 @@ export class ConfiguratorRuntimeService {
 
   private async getOrCreateProviderAccess(
     deviceConfig: DeviceConfigEntity,
+    provider = '3x-ui',
   ): Promise<ProviderAccessEntity> {
     const existing = (deviceConfig.providerAccesses ?? []).find(
-      (item) => item.provider === '3x-ui',
+      (item) => item.provider === provider,
     );
     if (existing) {
       return existing;
     }
 
+    const persisted = await this.providerAccessesRepository.findOne({
+      where: {
+        deviceConfigId: deviceConfig.id,
+        provider,
+      },
+      order: {
+        updatedAt: 'DESC',
+      },
+    });
+    if (persisted) {
+      return persisted;
+    }
+
     return this.providerAccessesRepository.save(
       this.providerAccessesRepository.create({
         deviceConfigId: deviceConfig.id,
-        provider: '3x-ui',
+        provider,
         status: 'pending',
       }),
     );
@@ -664,15 +704,45 @@ export class ConfiguratorRuntimeService {
     createdClient: VpnClientResult | null;
     loadIncremented: boolean;
   }> {
+    if (!provision.vpnNodeId || !provision.vpnNode) {
+      throw new Error('VPN node is not selected for this service');
+    }
+
+    return this.resolveDeviceProviderMaterialForNode(
+      provision,
+      providerAccess,
+      device,
+      provision.vpnNode,
+      'normal',
+    );
+  }
+
+  private async resolveDeviceProviderMaterialForNode(
+    provision: ProvisionEntity,
+    providerAccess: ProviderAccessEntity,
+    device: ConfiguratorDeviceIdentity,
+    node: VpnNodeEntity,
+    profile: 'normal' | 'away',
+  ): Promise<{
+    login: string;
+    subscriptionLink: string;
+    createdClient: VpnClientResult | null;
+    loadIncremented: boolean;
+  }> {
     const existingLink = this.readProviderMetadataString(
       providerAccess.providerMetadataJson,
       'subscriptionLink',
     );
     const existingLogin = providerAccess.providerLogin?.trim();
+    const existingNodeId = this.readProviderMetadataString(
+      providerAccess.providerMetadataJson,
+      'nodeId',
+    );
     if (
       providerAccess.status === 'active' &&
       existingLogin &&
-      existingLink
+      existingLink &&
+      (!existingNodeId || existingNodeId === node.id)
     ) {
       return {
         login: existingLogin,
@@ -682,12 +752,18 @@ export class ConfiguratorRuntimeService {
       };
     }
 
-    if (!provision.vpnNodeId || !provision.vpnNode) {
-      throw new Error('VPN node is not selected for this service');
+    if (existingLogin && existingNodeId && existingNodeId !== node.id) {
+      const oldNode = await this.vpnNodesService
+        .findById(existingNodeId)
+        .catch(() => null);
+      if (oldNode) {
+        await this.deleteCreatedClientQuietly(oldNode, existingLogin);
+        await this.vpnNodesService.decrementLoad(existingNodeId);
+      }
     }
 
     const loadIncremented = await this.vpnNodesService.incrementLoad(
-      provision.vpnNodeId,
+      node.id,
     );
     if (!loadIncremented) {
       throw new Error('VPN node capacity was exhausted');
@@ -695,12 +771,13 @@ export class ConfiguratorRuntimeService {
 
     try {
       const createdClient = await this.vpnClient.createClient(
-        this.toVpnNodeConfig(provision.vpnNode),
+        this.toVpnNodeConfig(node),
         {
           email: provision.email,
           externalSubscriptionId: this.buildDeviceExternalSubscriptionId(
             provision,
             device,
+            profile,
           ),
           limitIp: 1,
           expiresAt: provision.serviceExpiresAt ?? undefined,
@@ -714,7 +791,7 @@ export class ConfiguratorRuntimeService {
         loadIncremented,
       };
     } catch (error) {
-      await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
+      await this.vpnNodesService.decrementLoad(node.id);
       throw error;
     }
   }
@@ -733,14 +810,23 @@ export class ConfiguratorRuntimeService {
 
     for (const providerAccess of providerAccesses) {
       const login = providerAccess.providerLogin?.trim();
+      const nodeId =
+        this.readProviderMetadataString(
+          providerAccess.providerMetadataJson,
+          'nodeId',
+        ) ?? provision.vpnNodeId ?? null;
+      const node =
+        nodeId && nodeId !== provision.vpnNodeId
+          ? await this.vpnNodesService.findById(nodeId).catch(() => null)
+          : provision.vpnNode ?? null;
       if (
-        provision.vpnNode &&
+        node &&
         login &&
         (providerAccess.status === 'active' || providerAccess.status === 'failed')
       ) {
-        await this.deleteCreatedClientQuietly(provision.vpnNode, login);
-        if (provision.vpnNodeId) {
-          await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
+        await this.deleteCreatedClientQuietly(node, login);
+        if (nodeId) {
+          await this.vpnNodesService.decrementLoad(nodeId);
         }
       }
 
@@ -1129,6 +1215,282 @@ export class ConfiguratorRuntimeService {
     };
   }
 
+  private async buildDeviceConnectionProfiles(
+    provision: ProvisionEntity,
+    deviceConfig: DeviceConfigEntity,
+    device: ConfiguratorDeviceIdentity,
+    normalRuntime: {
+      protocol: string;
+      payload: string;
+      sourceLink: string;
+      sourceCount: number;
+    },
+    normalRevision: string,
+    clientPolicies: {
+      routingPolicy: Record<string, unknown>;
+      automationPolicy: Record<string, unknown>;
+    },
+    now: Date,
+  ): Promise<Record<string, unknown>> {
+    const normalProfile = this.profileFromRuntime(
+      'normal',
+      'Обычный режим',
+      true,
+      provision.vpnNode ?? null,
+      normalRuntime,
+      normalRevision,
+      clientPolicies.routingPolicy,
+      clientPolicies.automationPolicy,
+      now.toISOString(),
+    );
+    const awayProfile = await this.buildAwayProfile(
+      provision,
+      deviceConfig,
+      device,
+      clientPolicies.automationPolicy,
+      now,
+    );
+
+    return this.buildConnectionProfiles({
+      normal: normalProfile,
+      away: awayProfile,
+    });
+  }
+
+  private async buildAwayProfile(
+    provision: ProvisionEntity,
+    deviceConfig: DeviceConfigEntity,
+    device: ConfiguratorDeviceIdentity,
+    automationPolicy: Record<string, unknown>,
+    now: Date,
+  ): Promise<ConnectionProfileSnapshot> {
+    const awayPackages = this.extractPolicyStringList(
+      automationPolicy,
+      'autoDisconnectApps',
+      'auto_disconnect_apps',
+      'auto_disable_apps',
+    );
+    const routingPolicy = this.awayRoutingPolicy(awayPackages);
+    const profileAutomationPolicy = this.awayAutomationPolicy(awayPackages);
+
+    if (awayPackages.length === 0) {
+      return this.disabledConnectionProfile(
+        'away',
+        'За границей',
+        'Auto OFF list is empty',
+        routingPolicy,
+        profileAutomationPolicy,
+        now.toISOString(),
+      );
+    }
+
+    const awayNode = await this.vpnNodesService.selectAwayNode();
+    if (!awayNode) {
+      return this.disabledConnectionProfile(
+        'away',
+        'За границей',
+        'Away node is not configured',
+        routingPolicy,
+        profileAutomationPolicy,
+        now.toISOString(),
+      );
+    }
+
+    let createdClient: VpnClientResult | null = null;
+    let loadIncremented = false;
+    try {
+      const providerAccess = await this.getOrCreateProviderAccess(
+        deviceConfig,
+        '3x-ui:away',
+      );
+      const providerMaterial = await this.resolveDeviceProviderMaterialForNode(
+        provision,
+        providerAccess,
+        device,
+        awayNode,
+        'away',
+      );
+      createdClient = providerMaterial.createdClient;
+      loadIncremented = providerMaterial.loadIncremented;
+
+      const runtime = await this.buildRuntimeSnapshotFromLink(
+        providerMaterial.subscriptionLink,
+      );
+      const revision = this.buildRevision(provision, runtime, device, awayNode.id);
+
+      await this.providerAccessesRepository.save({
+        ...providerAccess,
+        provider: '3x-ui:away',
+        providerUserId: providerMaterial.login,
+        providerLogin: providerMaterial.login,
+        status: 'active',
+        lastSyncedAt: now,
+        providerMetadataJson: this.buildDeviceProviderMetadata(
+          provision,
+          device,
+          providerMaterial.subscriptionLink,
+          {
+            resolvedLink: runtime.sourceLink,
+            sourceCount: runtime.sourceCount,
+            protocol: runtime.protocol,
+          },
+          awayNode,
+          'away',
+        ),
+      });
+
+      return this.profileFromRuntime(
+        'away',
+        'За границей',
+        true,
+        awayNode,
+        runtime,
+        revision,
+        routingPolicy,
+        profileAutomationPolicy,
+        now.toISOString(),
+      );
+    } catch (error) {
+      if (createdClient) {
+        await this.deleteCreatedClientQuietly(awayNode, createdClient.login);
+      }
+      if (loadIncremented) {
+        await this.vpnNodesService.decrementLoad(awayNode.id);
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Away profile generation failed for provision ${provision.externalSubscriptionId}, device ${device.deviceId}: ${message}`,
+      );
+
+      return this.disabledConnectionProfile(
+        'away',
+        'За границей',
+        message,
+        routingPolicy,
+        profileAutomationPolicy,
+        now.toISOString(),
+        awayNode,
+      );
+    }
+  }
+
+  private buildConnectionProfiles(
+    profiles: Record<string, ConnectionProfileSnapshot | null | undefined>,
+  ): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(profiles).filter(
+        (entry): entry is [string, ConnectionProfileSnapshot] => Boolean(entry[1]),
+      ),
+    );
+  }
+
+  private profileFromRuntime(
+    id: 'normal' | 'away',
+    label: string,
+    enabled: boolean,
+    node: VpnNodeEntity | null,
+    runtime: {
+      protocol: string;
+      payload: string;
+      sourceLink: string;
+      sourceCount: number;
+    },
+    revision: string,
+    routingPolicy: Record<string, unknown>,
+    automationPolicy: Record<string, unknown>,
+    generatedAt: string,
+  ): ConnectionProfileSnapshot {
+    return {
+      id,
+      label,
+      enabled,
+      ready: true,
+      runtimeType: 'xray_config',
+      protocol: runtime.protocol,
+      configRevision: revision,
+      runtimePayload: runtime.payload,
+      nodeId: node?.id ?? null,
+      nodeLabel: node?.name ?? node?.host ?? null,
+      nodeCountry: node?.country ?? null,
+      nodeHost: node?.host ?? null,
+      routingPolicy,
+      automationPolicy,
+      generatedAt,
+    };
+  }
+
+  private disabledConnectionProfile(
+    id: 'normal' | 'away',
+    label: string,
+    error: string,
+    routingPolicy: Record<string, unknown>,
+    automationPolicy: Record<string, unknown>,
+    generatedAt: string,
+    node?: VpnNodeEntity | null,
+  ): ConnectionProfileSnapshot {
+    return {
+      id,
+      label,
+      enabled: false,
+      ready: false,
+      runtimeType: null,
+      protocol: null,
+      configRevision: null,
+      runtimePayload: null,
+      nodeId: node?.id ?? null,
+      nodeLabel: node?.name ?? node?.host ?? null,
+      nodeCountry: node?.country ?? null,
+      nodeHost: node?.host ?? null,
+      routingPolicy,
+      automationPolicy,
+      generatedAt,
+      error,
+    };
+  }
+
+  private awayRoutingPolicy(packages: string[]): Record<string, unknown> {
+    return {
+      version: 1,
+      mode: packages.length > 0 ? 'selected_apps' : 'all_apps',
+      includedApps: packages,
+      excludedApps: [],
+    };
+  }
+
+  private awayAutomationPolicy(packages: string[]): Record<string, unknown> {
+    return {
+      version: 1,
+      autoConnectApps: packages,
+      autoDisconnectApps: [],
+      requiresUsageAccess: packages.length > 0,
+    };
+  }
+
+  private extractPolicyStringList(
+    policy: Record<string, unknown>,
+    ...keys: string[]
+  ): string[] {
+    for (const key of keys) {
+      const value = policy[key];
+      const items =
+        Array.isArray(value)
+          ? value
+          : typeof value === 'string'
+            ? value.split(/[\s,]+/)
+            : [];
+      const normalized = items
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (normalized.length > 0) {
+        return Array.from(new Set(normalized));
+      }
+    }
+
+    return [];
+  }
+
   private buildStreamSettings(
     network: string,
     security: string,
@@ -1403,6 +1765,8 @@ export class ConfiguratorRuntimeService {
       sourceCount: number;
       protocol: string;
     },
+    node: VpnNodeEntity | null = provision.vpnNode ?? null,
+    profile: 'normal' | 'away' = 'normal',
   ): Record<string, unknown> {
     return {
       externalSubscriptionId: provision.externalSubscriptionId,
@@ -1410,9 +1774,10 @@ export class ConfiguratorRuntimeService {
       deviceName: device.deviceName ?? null,
       platform: device.platform ?? null,
       installId: device.installId ?? null,
+      profile,
       subscriptionLink,
-      nodeId: provision.vpnNodeId ?? null,
-      nodeHost: provision.vpnNode?.host ?? null,
+      nodeId: node?.id ?? provision.vpnNodeId ?? null,
+      nodeHost: node?.host ?? provision.vpnNode?.host ?? null,
       resolvedLink: runtime.resolvedLink,
       sourceCount: runtime.sourceCount,
       protocol: runtime.protocol,
@@ -1423,6 +1788,7 @@ export class ConfiguratorRuntimeService {
     provision: ProvisionEntity,
     runtime: { payload: string; protocol: string },
     device?: ConfiguratorDeviceIdentity,
+    nodeId: string | null = provision.vpnNodeId ?? null,
   ): string {
     const hash = createHash('sha1')
       .update(
@@ -1431,7 +1797,7 @@ export class ConfiguratorRuntimeService {
           externalSubscriptionId: provision.externalSubscriptionId,
           deviceId: device?.deviceId ?? null,
           installId: device?.installId ?? null,
-          nodeId: provision.vpnNodeId ?? null,
+          nodeId,
           protocol: runtime.protocol,
           payload: runtime.payload,
         }),
@@ -1452,6 +1818,7 @@ export class ConfiguratorRuntimeService {
       runtimePayload: string | null;
       routingPolicy?: Record<string, unknown> | null;
       automationPolicy?: Record<string, unknown> | null;
+      connectionProfiles?: Record<string, unknown> | null;
       telemetryProfile?: Record<string, unknown> | null;
       generatedAt: string | null;
     },
@@ -1473,6 +1840,7 @@ export class ConfiguratorRuntimeService {
       nodeHost: provision.vpnNode?.host ?? null,
       routingPolicy: payload.routingPolicy ?? null,
       automationPolicy: payload.automationPolicy ?? null,
+      connectionProfiles: payload.connectionProfiles ?? null,
       telemetryProfile: payload.telemetryProfile ?? null,
       generatedAt: payload.generatedAt,
     };
@@ -1481,10 +1849,13 @@ export class ConfiguratorRuntimeService {
   private buildDeviceExternalSubscriptionId(
     provision: ProvisionEntity,
     device: ConfiguratorDeviceIdentity,
+    profile: 'normal' | 'away' = 'normal',
   ): string {
     const suffix = device.deviceId?.trim() || device.installId?.trim() || 'device';
 
-    return `${provision.externalSubscriptionId}_device_${suffix}`;
+    const profileSuffix = profile === 'away' ? '_away' : '';
+
+    return `${provision.externalSubscriptionId}_device_${suffix}${profileSuffix}`;
   }
 
   private toVpnNodeConfig(node: VpnNodeEntity): VpnNodeConfig {
@@ -1569,6 +1940,25 @@ export class ConfiguratorRuntimeService {
 interface ParsedLink {
   protocol: string;
   outbound: Record<string, unknown>;
+}
+
+interface ConnectionProfileSnapshot {
+  id: 'normal' | 'away';
+  label: string;
+  enabled: boolean;
+  ready: boolean;
+  runtimeType: string | null;
+  protocol: string | null;
+  configRevision: string | null;
+  runtimePayload: string | null;
+  nodeId: string | null;
+  nodeLabel: string | null;
+  nodeCountry: string | null;
+  nodeHost: string | null;
+  routingPolicy: Record<string, unknown>;
+  automationPolicy: Record<string, unknown>;
+  generatedAt: string;
+  error?: string;
 }
 
 export interface ConfiguratorDeviceIdentity {

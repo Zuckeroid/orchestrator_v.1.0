@@ -1,11 +1,15 @@
 import { Type } from 'class-transformer';
 import {
   IsInt,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   Min,
 } from 'class-validator';
+import { VpnNodeUsageScope } from '../../../database/entities/vpn-node.entity';
+
+const VPN_NODE_USAGE_SCOPES: VpnNodeUsageScope[] = ['general', 'away'];
 
 export class CreateVpnNodeDto {
   @IsOptional()
@@ -41,6 +45,10 @@ export class CreateVpnNodeDto {
   @IsOptional()
   @IsString()
   subscriptionBaseUrl?: string;
+
+  @IsOptional()
+  @IsIn(VPN_NODE_USAGE_SCOPES)
+  usageScope?: VpnNodeUsageScope;
 
   @Type(() => Number)
   @IsInt()

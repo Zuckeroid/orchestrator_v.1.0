@@ -9,6 +9,7 @@ import {
 
 export type VpnNodeStatus = 'active' | 'inactive' | 'blocked' | 'draining';
 export type VpnNodeHealthStatus = 'unknown' | 'online' | 'degraded' | 'offline';
+export type VpnNodeUsageScope = 'general' | 'away';
 
 @Entity('vpn_nodes')
 export class VpnNodeEntity {
@@ -41,6 +42,10 @@ export class VpnNodeEntity {
 
   @Column({ type: 'text', default: '3x-ui' })
   type!: string;
+
+  @Index()
+  @Column({ name: 'usage_scope', type: 'text', default: 'general' })
+  usageScope!: VpnNodeUsageScope;
 
   @Index()
   @Column({ type: 'text', default: 'active' })

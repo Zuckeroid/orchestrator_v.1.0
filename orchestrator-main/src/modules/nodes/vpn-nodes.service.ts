@@ -5,6 +5,7 @@ import {
   VpnNodeEntity,
   VpnNodeHealthStatus,
   VpnNodeStatus,
+  VpnNodeUsageScope,
 } from '../../database/entities/vpn-node.entity';
 import {
   VpnClient,
@@ -21,6 +22,7 @@ export interface CreateVpnNodeInput {
   apiVersion?: string;
   inboundId?: number;
   subscriptionBaseUrl?: string;
+  usageScope?: VpnNodeUsageScope;
   capacity: number;
 }
 
@@ -33,6 +35,7 @@ export interface UpdateVpnNodeInput {
   apiVersion?: string | null;
   inboundId?: number | null;
   subscriptionBaseUrl?: string | null;
+  usageScope?: VpnNodeUsageScope;
   capacity?: number;
   isActive?: boolean;
   status?: VpnNodeStatus;
@@ -79,6 +82,7 @@ export class VpnNodesService {
       apiVersion: input.apiVersion,
       inboundId: input.inboundId,
       subscriptionBaseUrl: input.subscriptionBaseUrl,
+      usageScope: input.usageScope ?? 'general',
       capacity: input.capacity,
       currentLoad: 0,
       isActive: true,
@@ -118,6 +122,9 @@ export class VpnNodesService {
     }
     if (input.subscriptionBaseUrl !== undefined) {
       node.subscriptionBaseUrl = input.subscriptionBaseUrl;
+    }
+    if (input.usageScope !== undefined) {
+      node.usageScope = input.usageScope;
     }
     if (input.capacity !== undefined) {
       node.capacity = input.capacity;
@@ -242,6 +249,7 @@ export class VpnNodesService {
       .createQueryBuilder('node')
       .where('node.is_active = :isActive', { isActive: true })
       .andWhere('node.status = :status', { status: 'active' })
+      .andWhere('node.usage_scope = :usageScope', { usageScope: 'general' })
       .andWhere('node.current_load < node.capacity')
       .orderBy('node.current_load', 'ASC')
       .addOrderBy('node.created_at', 'ASC')
@@ -252,6 +260,18 @@ export class VpnNodesService {
     }
 
     return node;
+  }
+
+  async selectAwayNode(): Promise<VpnNodeEntity | null> {
+    return this.repository
+      .createQueryBuilder('node')
+      .where('node.is_active = :isActive', { isActive: true })
+      .andWhere('node.status = :status', { status: 'active' })
+      .andWhere('node.usage_scope = :usageScope', { usageScope: 'away' })
+      .andWhere('node.current_load < node.capacity')
+      .orderBy('node.current_load', 'ASC')
+      .addOrderBy('node.created_at', 'ASC')
+      .getOne();
   }
 
   async incrementLoad(nodeId: string): Promise<boolean> {
