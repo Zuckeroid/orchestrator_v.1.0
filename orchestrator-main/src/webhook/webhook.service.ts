@@ -8,6 +8,13 @@ import {
 } from '../common/types/billing-event.type';
 import { InvalidWebhookError } from '../common/errors/invalid-webhook.error';
 import { ProcessedEventsService } from '../modules/processed-events/processed-events.service';
+import {
+  CreateNetworkTelemetryEventDto,
+  NETWORK_TELEMETRY_CLASSIFICATIONS,
+  NETWORK_TELEMETRY_EVENT_TYPES,
+  NETWORK_TELEMETRY_RESULTS,
+} from '../modules/telemetry/dto/create-network-telemetry-event.dto';
+import { TelemetryService } from '../modules/telemetry/telemetry.service';
 
 @Injectable()
 export class WebhookService {
@@ -15,6 +22,7 @@ export class WebhookService {
     private queueService: QueueService,
     private configService: ConfigService,
     private processedEventsService: ProcessedEventsService,
+    private telemetryService: TelemetryService,
   ) {}
 
   async handle(
@@ -55,6 +63,23 @@ export class WebhookService {
             ? body.probe
             : 'unknown',
       },
+    };
+  }
+
+  async handleTelemetry(
+    body: unknown,
+    headers: Record<string, string | string[] | undefined>,
+    rawBody?: Buffer,
+  ) {
+    this.validateApiKey(headers);
+    this.validateTimestamp(headers);
+    this.validateSignature(headers, rawBody);
+
+    return {
+      success: true,
+      data: await this.telemetryService.record(
+        this.parseTelemetryPayload(body),
+      ),
     };
   }
 
@@ -112,6 +137,70 @@ export class WebhookService {
     this.validateEvent(payload);
 
     return payload;
+  }
+
+  private parseTelemetryPayload(body: unknown): CreateNetworkTelemetryEventDto {
+    if (!this.isRecord(body)) {
+      throw new InvalidWebhookError(
+        'INVALID_PAYLOAD',
+        'Telemetry payload must be an object',
+      );
+    }
+
+    const eventType = this.getString(body, 'eventType');
+    const result = this.getString(body, 'result');
+    if (!(NETWORK_TELEMETRY_EVENT_TYPES as readonly string[]).includes(eventType)) {
+      throw new InvalidWebhookError(
+        'INVALID_PAYLOAD',
+        `Unsupported telemetry event type: ${eventType}`,
+      );
+    }
+    if (!(NETWORK_TELEMETRY_RESULTS as readonly string[]).includes(result)) {
+      throw new InvalidWebhookError(
+        'INVALID_PAYLOAD',
+        `Unsupported telemetry result: ${result}`,
+      );
+    }
+
+    const classification = this.getOptionalString(body, 'classification');
+    if (
+      classification &&
+      !(NETWORK_TELEMETRY_CLASSIFICATIONS as readonly string[]).includes(
+        classification,
+      )
+    ) {
+      throw new InvalidWebhookError(
+        'INVALID_PAYLOAD',
+        `Unsupported telemetry classification: ${classification}`,
+      );
+    }
+
+    return {
+      eventType: eventType as CreateNetworkTelemetryEventDto['eventType'],
+      result: result as CreateNetworkTelemetryEventDto['result'],
+      classification:
+        classification as CreateNetworkTelemetryEventDto['classification'],
+      nodeId: this.getOptionalString(body, 'nodeId'),
+      nodeName: this.getOptionalString(body, 'nodeName'),
+      nodeCountry: this.getOptionalString(body, 'nodeCountry'),
+      nodeHost: this.getOptionalString(body, 'nodeHost'),
+      nodePort: this.getOptionalInteger(body, 'nodePort'),
+      protocol: this.getOptionalString(body, 'protocol'),
+      transport: this.getOptionalString(body, 'transport'),
+      networkType: this.getOptionalString(body, 'networkType'),
+      carrierName: this.getOptionalString(body, 'carrierName'),
+      mcc: this.getOptionalString(body, 'mcc'),
+      mnc: this.getOptionalString(body, 'mnc'),
+      appVersion: this.getOptionalString(body, 'appVersion'),
+      platform: this.getOptionalString(body, 'platform'),
+      installIdHash: this.getOptionalString(body, 'installIdHash'),
+      deviceConfigId: this.getOptionalString(body, 'deviceConfigId'),
+      latencyMs: this.getOptionalInteger(body, 'latencyMs'),
+      errorCode: this.getOptionalString(body, 'errorCode'),
+      errorMessage: this.getOptionalString(body, 'errorMessage'),
+      details: this.getOptionalObject(body, 'details'),
+      observedAt: this.getOptionalString(body, 'observedAt'),
+    };
   }
 
   private validateEvent(payload: BillingEventPayload): void {
@@ -315,6 +404,38 @@ export class WebhookService {
     }
 
     throw new InvalidWebhookError('INVALID_PAYLOAD', `${key} must be a number`);
+  }
+
+  private getOptionalInteger(
+    body: Record<string, unknown>,
+    key: string,
+  ): number | undefined {
+    const value = this.getOptionalNumber(body, key);
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (!Number.isInteger(value)) {
+      throw new InvalidWebhookError('INVALID_PAYLOAD', `${key} must be an integer`);
+    }
+
+    return value;
+  }
+
+  private getOptionalObject(
+    body: Record<string, unknown>,
+    key: string,
+  ): Record<string, unknown> | undefined {
+    const value = body[key];
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    if (!this.isRecord(value)) {
+      throw new InvalidWebhookError('INVALID_PAYLOAD', `${key} must be an object`);
+    }
+
+    return value;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {
