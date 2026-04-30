@@ -406,6 +406,71 @@ export interface AuditLog {
   createdAt: string;
 }
 
+export interface TelemetryOverview {
+  windowHours: number;
+  generatedAt: string;
+  totals: {
+    total: number;
+    success: number;
+    failed: number;
+    timeout: number;
+    skipped: number;
+    suspected: number;
+  };
+  topCarriers: TelemetryOverviewGroup[];
+  topNodes: TelemetryOverviewGroup[];
+  classifications: TelemetryOverviewGroup[];
+}
+
+export interface TelemetryOverviewGroup {
+  key: string;
+  total: number;
+  failed: number;
+  timeout: number;
+  lastObservedAt?: string | null;
+}
+
+export interface TelemetryMatrixRow {
+  carrierName?: string | null;
+  networkType?: string | null;
+  nodeId?: string | null;
+  nodeName?: string | null;
+  nodeCountry?: string | null;
+  protocol?: string | null;
+  transport?: string | null;
+  classification?: string | null;
+  total: number;
+  success: number;
+  failed: number;
+  timeout: number;
+  skipped: number;
+  issueCount: number;
+  failureRate: number;
+  avgLatencyMs?: number | null;
+  lastObservedAt?: string | null;
+  status: 'blocked_suspected' | 'degraded' | 'learning' | 'ok';
+}
+
+export interface TelemetryEvent {
+  id: string;
+  eventType: string;
+  result: string;
+  classification?: string | null;
+  nodeId?: string | null;
+  nodeName?: string | null;
+  nodeCountry?: string | null;
+  nodeHost?: string | null;
+  nodePort?: number | null;
+  protocol?: string | null;
+  transport?: string | null;
+  networkType?: string | null;
+  carrierName?: string | null;
+  latencyMs?: number | null;
+  errorCode?: string | null;
+  observedAt: string;
+  createdAt: string;
+}
+
 export type BillingWebhookEvent =
   | 'payment_paid'
   | 'subscription_cancel'

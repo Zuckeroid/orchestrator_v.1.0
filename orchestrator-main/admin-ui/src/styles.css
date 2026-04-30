@@ -893,6 +893,24 @@ td {
   color: var(--color-text-soft);
 }
 
+.status-pill.teal {
+  border-color: var(--color-primary);
+  background: var(--color-panel-accent);
+  color: var(--color-primary);
+}
+
+.dpi-matrix-table th:nth-child(1),
+.dpi-matrix-table td:nth-child(1),
+.dpi-matrix-table th:nth-child(2),
+.dpi-matrix-table td:nth-child(2) {
+  min-width: 150px;
+}
+
+.dpi-matrix-table th:nth-child(4),
+.dpi-matrix-table td:nth-child(4) {
+  min-width: 130px;
+}
+
 .country-flag-wrap {
   display: inline-flex;
   align-items: center;

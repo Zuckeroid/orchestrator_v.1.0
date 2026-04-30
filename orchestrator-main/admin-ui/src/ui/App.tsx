@@ -17,6 +17,9 @@ import {
   Provision,
   QueueOverview,
   StorageBackend,
+  TelemetryEvent,
+  TelemetryMatrixRow,
+  TelemetryOverview,
   VpnNode,
   VpnNodeCheckResult,
 } from '../api';
@@ -30,6 +33,7 @@ type TabId =
   | 'configurator'
   | 'app-routing'
   | 'app-automation'
+  | 'dpi-monitor'
   | 'domains'
   | 'webhook'
   | 'events'
@@ -658,6 +662,7 @@ export function App() {
     { id: 'configurator', label: 'Configurator' },
     { id: 'app-routing', label: 'App Routing' },
     { id: 'app-automation', label: 'Auto On/Off' },
+    { id: 'dpi-monitor', label: 'DPI Monitor' },
     { id: 'domains', label: 'Domains' },
     { id: 'events', label: 'Events' },
     { id: 'webhook', label: 'Webhook Tester' },
@@ -768,6 +773,9 @@ export function App() {
         ) : null}
         {activeTab === 'app-automation' ? (
           <AppPoliciesPanel mode="automation" refreshVersion={refreshVersion} />
+        ) : null}
+        {activeTab === 'dpi-monitor' ? (
+          <DpiMonitorPanel refreshVersion={refreshVersion} />
         ) : null}
         {activeTab === 'domains' ? (
           <DomainEndpointsPanel refreshVersion={refreshVersion} />
@@ -2379,6 +2387,253 @@ function ConfiguratorPanel({ refreshVersion }: { refreshVersion: number }) {
           pageSize={CONFIGURATOR_PAGE_SIZE}
           onPageChange={setPage}
         />
+      </section>
+    </section>
+  );
+}
+
+function DpiMonitorPanel({ refreshVersion }: { refreshVersion: number }) {
+  const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
+  const [hours, setHours] = useState(24);
+  const [overview, setOverview] = useState<TelemetryOverview | null>(null);
+  const [matrix, setMatrix] = useState<TelemetryMatrixRow[]>([]);
+  const [events, setEvents] = useState<TelemetryEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const aggregateHours = Math.max(hours, 72);
+
+  async function loadDpiMonitor() {
+    setLoading(true);
+    setError('');
+    try {
+      await api.post(`/telemetry/aggregate?hours=${aggregateHours}`);
+      const [nextOverview, nextMatrix, nextEvents] = await Promise.all([
+        api.get<TelemetryOverview>(
+          `/telemetry/overview?hours=${hours}&refresh=false`,
+        ),
+        api.get<TelemetryMatrixRow[]>(
+          `/telemetry/matrix?hours=${hours}&refresh=false`,
+        ),
+        api.get<TelemetryEvent[]>('/telemetry/events?limit=20'),
+      ]);
+
+      setOverview(nextOverview);
+      setMatrix(nextMatrix);
+      setEvents(nextEvents);
+      setMessage(`Updated ${new Date().toLocaleTimeString()}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadDpiMonitor();
+  }, [refreshVersion, hours]);
+
+  const totals = overview?.totals;
+  const totalIssues = (totals?.failed ?? 0) + (totals?.timeout ?? 0);
+  const topCarrier = overview?.topCarriers[0];
+  const topNode = overview?.topNodes[0];
+
+  return (
+    <section className="dashboard-bottom-grid">
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <h2>DPI Monitor</h2>
+            <p>
+              Provider, node and profile telemetry. Hourly rollups keep the raw
+              stream from becoming the main dashboard workload.
+            </p>
+          </div>
+          <div className="row-actions filter-toolbar">
+            <label className="inline-filter">
+              Window
+              <select
+                value={hours}
+                onChange={(event) => setHours(Number(event.target.value))}
+              >
+                <option value={6}>6h</option>
+                <option value={24}>24h</option>
+                <option value={72}>72h</option>
+                <option value={168}>7d</option>
+              </select>
+            </label>
+            <button type="button" onClick={loadDpiMonitor} disabled={loading}>
+              {loading ? 'Refreshing' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+        {error ? <div className="error-line">{error}</div> : null}
+        {message ? <p className="muted">{message}</p> : null}
+        <div className="metric-grid">
+          <div className="metric teal">
+            <span>Telemetry events</span>
+            <strong>{totals?.total ?? 0}</strong>
+          </div>
+          <div className="metric red">
+            <span>Failures and timeouts</span>
+            <strong>{totalIssues}</strong>
+          </div>
+          <div className="metric yellow">
+            <span>Suspected DPI</span>
+            <strong>{totals?.suspected ?? 0}</strong>
+          </div>
+          <div className="metric green">
+            <span>Success</span>
+            <strong>
+              {formatPercent(totals?.success ?? 0, totals?.total ?? 0)}
+            </strong>
+          </div>
+          <div className="metric teal">
+            <span>Top carrier</span>
+            <strong>{topCarrier?.key ?? 'unknown'}</strong>
+          </div>
+          <div className="metric teal">
+            <span>Top node</span>
+            <strong>{topNode?.key ?? 'unknown'}</strong>
+          </div>
+        </div>
+        <div className="pill-row">
+          {(overview?.classifications ?? []).map((item) => (
+            <span className="pill" key={item.key}>
+              {item.key}: {item.failed + item.timeout}/{item.total}
+            </span>
+          ))}
+          {overview?.generatedAt ? (
+            <span className="pill">
+              generated {formatDate(overview.generatedAt)}
+            </span>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="panel table-panel">
+        <div className="panel-heading">
+          <h2>Signal Matrix</h2>
+          <p>Rows turn red only after repeated failures in the selected window.</p>
+        </div>
+        <div className="table-wrap">
+          <table className="dpi-matrix-table">
+            <thead>
+              <tr>
+                <th>Carrier</th>
+                <th>Node</th>
+                <th>Profile</th>
+                <th>Result</th>
+                <th>Classification</th>
+                <th>Last seen</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matrix.map((row, index) => (
+                <tr
+                  key={`${row.carrierName}-${row.nodeId}-${row.classification}-${index}`}
+                >
+                  <td>
+                    <strong>{telemetryLabel(row.carrierName)}</strong>
+                    <span className="cell-note">
+                      {telemetryLabel(row.networkType)}
+                    </span>
+                  </td>
+                  <td>
+                    {telemetryLabel(row.nodeName)}
+                    <span className="cell-note">
+                      {telemetryLabel(row.nodeCountry)}
+                    </span>
+                  </td>
+                  <td>{formatTelemetryProfile(row)}</td>
+                  <td>
+                    {row.issueCount}/{row.total}
+                    <span className="cell-note">
+                      failure rate {row.failureRate}%
+                    </span>
+                    <span className="cell-note">
+                      avg {row.avgLatencyMs ?? 'none'} ms
+                    </span>
+                  </td>
+                  <td>{telemetryLabel(row.classification)}</td>
+                  <td>{formatDate(row.lastObservedAt)}</td>
+                  <td>
+                    <span className={`status-pill ${dpiStatusTone(row.status)}`}>
+                      {row.status.replace('_', ' ')}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {matrix.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>No telemetry in this window.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel table-panel">
+        <div className="panel-heading">
+          <h2>Recent Events</h2>
+          <p>Raw samples are for investigation, not long-term dashboard load.</p>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Observed</th>
+                <th>Event</th>
+                <th>Node</th>
+                <th>Carrier</th>
+                <th>Result</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((event) => (
+                <tr key={event.id}>
+                  <td>{formatDate(event.observedAt)}</td>
+                  <td>
+                    {event.eventType}
+                    <span className="cell-note">
+                      {telemetryLabel(event.protocol)} /{' '}
+                      {telemetryLabel(event.transport)}
+                    </span>
+                  </td>
+                  <td>
+                    {telemetryLabel(event.nodeName)}
+                    <span className="cell-note">
+                      {telemetryLabel(event.nodeCountry)}
+                    </span>
+                  </td>
+                  <td>
+                    {telemetryLabel(event.carrierName)}
+                    <span className="cell-note">
+                      {telemetryLabel(event.networkType)}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`status-pill ${statusTone(event.result)}`}>
+                      {event.result}
+                    </span>
+                    <span className="cell-note">
+                      {telemetryLabel(event.classification)}
+                    </span>
+                  </td>
+                  <td>{telemetryLabel(event.errorCode)}</td>
+                </tr>
+              ))}
+              {events.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No raw events yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </section>
     </section>
   );
@@ -4692,6 +4947,23 @@ function formatDate(value?: string | null): string {
   return new Date(value).toLocaleString();
 }
 
+function formatPercent(value: number, total: number): string {
+  if (total <= 0) {
+    return '0%';
+  }
+
+  return `${Math.round((value / total) * 1000) / 10}%`;
+}
+
+function telemetryLabel(value?: string | null): string {
+  const cleanValue = value?.trim();
+  return cleanValue ? cleanValue : 'unknown';
+}
+
+function formatTelemetryProfile(row: TelemetryMatrixRow): string {
+  return `${telemetryLabel(row.protocol)} / ${telemetryLabel(row.transport)}`;
+}
+
 function formatDaysLeft(value?: string | null): string {
   if (!value) {
     return 'none';
@@ -4738,6 +5010,7 @@ function statusTone(value?: string | null): string {
     case 'failed':
     case 'cancelled':
     case 'deleted':
+    case 'timeout':
       return 'red';
     case 'degraded':
     case 'processing':
@@ -4746,6 +5019,20 @@ function statusTone(value?: string | null): string {
     case 'suspended':
     case 'delayed':
       return 'yellow';
+    default:
+      return 'teal';
+  }
+}
+
+function dpiStatusTone(value?: string | null): string {
+  switch (value) {
+    case 'ok':
+      return 'green';
+    case 'degraded':
+    case 'learning':
+      return 'yellow';
+    case 'blocked_suspected':
+      return 'red';
     default:
       return 'teal';
   }

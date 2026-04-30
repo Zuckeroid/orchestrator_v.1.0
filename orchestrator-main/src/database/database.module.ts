@@ -7,6 +7,7 @@ import { DeviceConfigEntity } from './entities/device-config.entity';
 import { DomainEndpointEntity } from './entities/domain-endpoint.entity';
 import { JobEntity } from './entities/job.entity';
 import { NetworkTelemetryEventEntity } from './entities/network-telemetry-event.entity';
+import { NetworkTelemetryHourlyEntity } from './entities/network-telemetry-hourly.entity';
 import { PlanEntity } from './entities/plan.entity';
 import { ProcessedEventEntity } from './entities/processed-event.entity';
 import { ProvisionEntity } from './entities/provision.entity';
@@ -22,6 +23,7 @@ export const DATABASE_ENTITIES = [
   DomainEndpointEntity,
   JobEntity,
   NetworkTelemetryEventEntity,
+  NetworkTelemetryHourlyEntity,
   PlanEntity,
   PolicyTemplateEntity,
   ProcessedEventEntity,
