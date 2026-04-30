@@ -15,6 +15,7 @@ import { StorageBackendsModule } from './modules/storage-backends/storage-backen
 import { HealthModule } from './modules/health/health.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { validateEnv } from './config/validate-env';
 
 @Module({
@@ -40,6 +41,7 @@ import { validateEnv } from './config/validate-env';
     HealthModule,
     JobsModule,
     AuditLogsModule,
+    TelemetryModule,
     QueueModule,
   ],
   controllers: [WebhookController],
