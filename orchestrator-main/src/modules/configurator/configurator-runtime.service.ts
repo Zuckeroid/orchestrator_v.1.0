@@ -393,6 +393,7 @@ export class ConfiguratorRuntimeService {
           protocol: runtime.protocol,
           configRevision: revision,
           runtimePayload: runtime.payload,
+          subscriptionLink: providerMaterial.subscriptionLink,
           routingPolicy: clientPolicies.routingPolicy,
           automationPolicy: clientPolicies.automationPolicy,
           connectionProfiles,
@@ -1818,6 +1819,7 @@ export class ConfiguratorRuntimeService {
       protocol: string | null;
       configRevision: string | null;
       runtimePayload: string | null;
+      subscriptionLink?: string | null;
       routingPolicy?: Record<string, unknown> | null;
       automationPolicy?: Record<string, unknown> | null;
       connectionProfiles?: Record<string, unknown> | null;
@@ -1832,6 +1834,7 @@ export class ConfiguratorRuntimeService {
       protocol: payload.protocol,
       configRevision: payload.configRevision,
       runtimePayload: payload.runtimePayload,
+      subscriptionLink: payload.subscriptionLink ?? null,
       deviceId: device?.deviceId ?? null,
       deviceName: device?.deviceName ?? null,
       platform: device?.platform ?? null,

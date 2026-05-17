@@ -6,6 +6,7 @@ export interface BillingConfigSnapshot {
   protocol?: string | null;
   configRevision?: string | null;
   runtimePayload?: string | null;
+  subscriptionLink?: string | null;
   deviceId?: string | null;
   deviceName?: string | null;
   platform?: string | null;

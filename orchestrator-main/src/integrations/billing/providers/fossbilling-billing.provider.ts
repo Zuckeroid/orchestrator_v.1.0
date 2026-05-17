@@ -53,6 +53,7 @@ export class FossbillingBillingProvider implements BillingProvider {
         config_revision: snapshot.configRevision ?? null,
         runtime_payload: snapshot.runtimePayload ?? null,
         xray_config: snapshot.runtimePayload ?? null,
+        subscription_link: snapshot.subscriptionLink ?? null,
         device_id: snapshot.deviceId ?? null,
         device_name: snapshot.deviceName ?? null,
         platform: snapshot.platform ?? null,
