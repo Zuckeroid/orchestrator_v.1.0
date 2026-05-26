@@ -14,6 +14,7 @@ import { ProvisionEntity } from './entities/provision.entity';
 import { ProviderAccessEntity } from './entities/provider-access.entity';
 import { PolicyTemplateEntity } from './entities/policy-template.entity';
 import { StorageBackendEntity } from './entities/storage-backend.entity';
+import { TransportProfileEntity } from './entities/transport-profile.entity';
 import { VpnNodeEntity } from './entities/vpn-node.entity';
 
 export const DATABASE_ENTITIES = [
@@ -30,6 +31,7 @@ export const DATABASE_ENTITIES = [
   ProvisionEntity,
   ProviderAccessEntity,
   StorageBackendEntity,
+  TransportProfileEntity,
   VpnNodeEntity,
 ];
 

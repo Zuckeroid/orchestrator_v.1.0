@@ -221,6 +221,48 @@ export interface VpnNodeCheckResult {
   message: string;
 }
 
+export interface TransportProfile {
+  id: string;
+  nodeId: string;
+  name: string;
+  provider: string;
+  providerInboundId?: number | null;
+  protocol: 'vless' | 'vmess' | 'trojan';
+  transport: 'tcp' | 'ws' | 'grpc' | 'h2' | 'http';
+  security: 'none' | 'tls' | 'reality';
+  port: number;
+  sni?: string | null;
+  hostHeader?: string | null;
+  path?: string | null;
+  serviceName?: string | null;
+  alpn?: string | null;
+  fingerprint?: string | null;
+  flow?: string | null;
+  publicKey?: string | null;
+  shortId?: string | null;
+  spiderX?: string | null;
+  priority: number;
+  weight: number;
+  status: 'draft' | 'active' | 'degraded' | 'blocked' | 'disabled';
+  lastCheckAt?: string | null;
+  lastError?: string | null;
+  metadataJson?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransportProfileCheckResult {
+  profile: TransportProfile;
+  check: VpnNodeCheckResult;
+}
+
+export interface TransportProfileSyncResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  profiles: TransportProfile[];
+}
+
 export interface StorageBackend {
   id: string;
   name?: string | null;

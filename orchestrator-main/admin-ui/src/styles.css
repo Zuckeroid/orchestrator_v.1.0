@@ -721,6 +721,35 @@ input[type="checkbox"] {
   justify-self: start;
 }
 
+.node-management-stack {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.transport-profile-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.transport-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.transport-profiles-table {
+  min-width: 920px;
+}
+
+.transport-profiles-table td:nth-child(4) .error-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .table-panel {
   min-width: 0;
 }
@@ -1144,6 +1173,10 @@ td {
   }
 
   .settings-form {
+    grid-template-columns: 1fr;
+  }
+
+  .transport-profile-grid {
     grid-template-columns: 1fr;
   }
 

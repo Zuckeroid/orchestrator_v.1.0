@@ -9,6 +9,7 @@ import {
   VpnNodeConfig,
   VpnNodeCheckOptions,
   VpnNodeCheckResult,
+  VpnProviderInbound,
 } from '../vpn-client.interface';
 
 interface ThreeXuiCredentials {
@@ -31,7 +32,12 @@ interface ThreeXuiClientSettings {
 
 interface ThreeXuiInbound {
   id: number;
-  settings?: string;
+  remark?: string;
+  port?: number;
+  protocol?: string;
+  enable?: boolean;
+  settings?: string | Record<string, unknown>;
+  streamSettings?: string | Record<string, unknown>;
 }
 
 @Injectable()
@@ -41,6 +47,17 @@ export class ThreeXuiVpnClient implements VpnClient {
   private readonly insecureHttpsAgent = new HttpsAgent({
     rejectUnauthorized: false,
   });
+
+  async listInbounds(node: VpnNodeConfig): Promise<VpnProviderInbound[]> {
+    const response = await this.getWithSession<unknown>(
+      node,
+      this.inboundsPath('/list'),
+    );
+
+    return this.unwrapInboundListResponse(response).map((inbound) =>
+      this.normalizeInbound(inbound),
+    );
+  }
 
   async checkNode(
     node: VpnNodeConfig,
@@ -249,17 +266,57 @@ export class ThreeXuiVpnClient implements VpnClient {
     return undefined;
   }
 
+  private unwrapInboundListResponse(response: unknown): ThreeXuiInbound[] {
+    if (Array.isArray(response)) {
+      return response.filter((item): item is ThreeXuiInbound =>
+        this.isInbound(item),
+      );
+    }
+
+    if (!this.isRecord(response)) {
+      return [];
+    }
+
+    const envelope = response as Record<string, unknown>;
+    const candidates = [envelope.obj, envelope.data, envelope.inbounds];
+
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        return candidate.filter((item): item is ThreeXuiInbound =>
+          this.isInbound(item),
+        );
+      }
+    }
+
+    return [];
+  }
+
+  private normalizeInbound(inbound: ThreeXuiInbound): VpnProviderInbound {
+    return {
+      id: inbound.id,
+      remark: this.cleanString(inbound.remark),
+      protocol: this.cleanString(inbound.protocol),
+      port:
+        typeof inbound.port === 'number' && Number.isFinite(inbound.port)
+          ? inbound.port
+          : null,
+      enable: typeof inbound.enable === 'boolean' ? inbound.enable : null,
+      settings: this.parseJsonRecord(inbound.settings),
+      streamSettings: this.parseJsonRecord(inbound.streamSettings),
+      raw: this.isRecord(inbound)
+        ? (JSON.parse(JSON.stringify(inbound)) as Record<string, unknown>)
+        : null,
+    };
+  }
+
   private countInboundClients(inbound: ThreeXuiInbound): number {
-    if (!inbound.settings) {
+    const settings = this.parseJsonRecord(inbound.settings);
+    if (!settings) {
       return 0;
     }
 
-    try {
-      const parsed = JSON.parse(inbound.settings) as { clients?: unknown[] };
-      return Array.isArray(parsed.clients) ? parsed.clients.length : 0;
-    } catch {
-      return 0;
-    }
+    const clients = settings.clients;
+    return Array.isArray(clients) ? clients.length : 0;
   }
 
   private isInbound(value: unknown): value is ThreeXuiInbound {
@@ -331,6 +388,31 @@ export class ThreeXuiVpnClient implements VpnClient {
     }
 
     return 'empty response';
+  }
+
+  private parseJsonRecord(
+    value: string | Record<string, unknown> | undefined,
+  ): Record<string, unknown> | null {
+    if (!value) {
+      return null;
+    }
+
+    if (this.isRecord(value)) {
+      return value;
+    }
+
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return this.isRecord(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private cleanString(value: unknown): string | null {
+    return typeof value === 'string' && value.trim() !== ''
+      ? value.trim()
+      : null;
   }
 
   private parseCredentials(apiKey: string): ThreeXuiCredentials {

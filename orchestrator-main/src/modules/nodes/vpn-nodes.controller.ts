@@ -15,11 +15,15 @@ import {
   AdminApiKeyGuard,
   AdminRequest,
 } from '../../common/guards/admin-api-key.guard';
+import { TransportProfileEntity } from '../../database/entities/transport-profile.entity';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { VpnNodeEntity } from '../../database/entities/vpn-node.entity';
 import { ProvisionsService } from '../provisions/provisions.service';
+import { CreateTransportProfileDto } from './dto/create-transport-profile.dto';
 import { CreateVpnNodeDto } from './dto/create-vpn-node.dto';
+import { UpdateTransportProfileDto } from './dto/update-transport-profile.dto';
 import { UpdateVpnNodeDto } from './dto/update-vpn-node.dto';
+import { TransportProfilesService } from './transport-profiles.service';
 import { VpnNodesService } from './vpn-nodes.service';
 
 @Controller('nodes/vpn')
@@ -27,6 +31,7 @@ import { VpnNodesService } from './vpn-nodes.service';
 export class VpnNodesController {
   constructor(
     private readonly vpnNodesService: VpnNodesService,
+    private readonly transportProfilesService: TransportProfilesService,
     private readonly provisionsService: ProvisionsService,
     private readonly auditLogsService: AuditLogsService,
   ) {}
@@ -66,6 +71,146 @@ export class VpnNodesController {
     return {
       success: true,
       data: this.serializeNode(node),
+    };
+  }
+
+  @Get(':id/transport-profiles')
+  async listTransportProfiles(@Param('id', new ParseUUIDPipe()) id: string) {
+    return {
+      success: true,
+      data: (
+        await this.transportProfilesService.list(id)
+      ).map((profile) => this.serializeTransportProfile(profile)),
+    };
+  }
+
+  @Post(':id/transport-profiles/sync-provider')
+  async syncTransportProfilesFromProvider(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: AdminRequest,
+  ) {
+    const result = await this.transportProfilesService.syncFromProvider(id);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'transport_profile',
+      entityId: id,
+      action: 'sync_provider',
+      after: {
+        created: result.created,
+        updated: result.updated,
+        skipped: result.skipped,
+        profileIds: result.profiles.map((profile) => profile.id),
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        ...result,
+        profiles: result.profiles.map((profile) =>
+          this.serializeTransportProfile(profile),
+        ),
+      },
+    };
+  }
+
+  @Post(':id/transport-profiles')
+  async createTransportProfile(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: CreateTransportProfileDto,
+    @Req() request: AdminRequest,
+  ) {
+    const profile = await this.transportProfilesService.create(id, body);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'transport_profile',
+      entityId: profile.id,
+      action: 'create',
+      after: profile,
+    });
+
+    return {
+      success: true,
+      data: this.serializeTransportProfile(profile),
+    };
+  }
+
+  @Patch(':id/transport-profiles/:profileId')
+  async updateTransportProfile(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('profileId', new ParseUUIDPipe()) profileId: string,
+    @Body() body: UpdateTransportProfileDto,
+    @Req() request: AdminRequest,
+  ) {
+    const before = await this.transportProfilesService.findById(id, profileId);
+    const profile = await this.transportProfilesService.update(
+      id,
+      profileId,
+      body,
+    );
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'transport_profile',
+      entityId: profile.id,
+      action: 'update',
+      before,
+      after: profile,
+    });
+
+    return {
+      success: true,
+      data: this.serializeTransportProfile(profile),
+    };
+  }
+
+  @Delete(':id/transport-profiles/:profileId')
+  async removeTransportProfile(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('profileId', new ParseUUIDPipe()) profileId: string,
+    @Req() request: AdminRequest,
+  ) {
+    const before = await this.transportProfilesService.findById(id, profileId);
+    await this.transportProfilesService.remove(id, profileId);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'transport_profile',
+      entityId: profileId,
+      action: 'delete',
+      before,
+    });
+
+    return {
+      success: true,
+      data: { id: profileId },
+    };
+  }
+
+  @Post(':id/transport-profiles/:profileId/check')
+  async checkTransportProfile(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('profileId', new ParseUUIDPipe()) profileId: string,
+    @Req() request: AdminRequest,
+  ) {
+    const result = await this.transportProfilesService.check(id, profileId);
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'transport_profile',
+      entityId: profileId,
+      action: 'check',
+      after: result,
+    });
+
+    return {
+      success: true,
+      data: {
+        ...result,
+        profile: this.serializeTransportProfile(result.profile),
+      },
     };
   }
 
@@ -178,6 +323,12 @@ export class VpnNodesController {
     return {
       ...node,
       apiKey: '[redacted]',
+    };
+  }
+
+  private serializeTransportProfile(profile: TransportProfileEntity) {
+    return {
+      ...profile,
     };
   }
 }

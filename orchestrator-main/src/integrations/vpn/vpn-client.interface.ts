@@ -33,7 +33,19 @@ export interface VpnNodeCheckOptions {
   forceReauth?: boolean;
 }
 
+export interface VpnProviderInbound {
+  id: number;
+  remark?: string | null;
+  protocol?: string | null;
+  port?: number | null;
+  enable?: boolean | null;
+  settings?: Record<string, unknown> | null;
+  streamSettings?: Record<string, unknown> | null;
+  raw?: Record<string, unknown> | null;
+}
+
 export interface VpnClient {
+  listInbounds(node: VpnNodeConfig): Promise<VpnProviderInbound[]>;
   checkNode(
     node: VpnNodeConfig,
     options?: VpnNodeCheckOptions,

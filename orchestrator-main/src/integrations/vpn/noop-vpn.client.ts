@@ -7,11 +7,18 @@ import {
   VpnNodeConfig,
   VpnNodeCheckOptions,
   VpnNodeCheckResult,
+  VpnProviderInbound,
 } from './vpn-client.interface';
 
 @Injectable()
 export class NoopVpnClient implements VpnClient {
   private readonly logger = new Logger(NoopVpnClient.name);
+
+  async listInbounds(node: VpnNodeConfig): Promise<VpnProviderInbound[]> {
+    this.logger.log(`Mock VPN inbounds listed: ${node.id}`);
+
+    return [];
+  }
 
   async checkNode(
     node: VpnNodeConfig,
