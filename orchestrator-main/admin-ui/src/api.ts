@@ -227,7 +227,7 @@ export interface TransportProfile {
   name: string;
   provider: string;
   providerInboundId?: number | null;
-  protocol: 'vless' | 'vmess' | 'trojan';
+  protocol: 'vless' | 'vmess' | 'trojan' | 'shadowsocks' | 'wireguard';
   transport: 'tcp' | 'ws' | 'grpc' | 'h2' | 'http';
   security: 'none' | 'tls' | 'reality';
   port: number;

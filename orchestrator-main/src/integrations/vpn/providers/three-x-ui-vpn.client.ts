@@ -18,11 +18,13 @@ interface ThreeXuiCredentials {
 }
 
 interface ThreeXuiClientSettings {
-  id: string;
+  id?: string;
+  password?: string;
+  method?: string;
   email: string;
   enable: boolean;
   expiryTime: number;
-  flow: string;
+  flow?: string;
   limitIp: number;
   reset: number;
   subId: string;
@@ -90,7 +92,7 @@ export class ThreeXuiVpnClient implements VpnClient {
 
     const clientId = uuid();
     const subId = clientId;
-    const client = this.buildClientSettings(clientId, subId, input, true);
+    const client = this.buildClientSettings(node, clientId, subId, input, true);
 
     await this.postWithSession(node, this.inboundsPath('/addClient'), {
       id: node.inboundId,
@@ -104,7 +106,8 @@ export class ThreeXuiVpnClient implements VpnClient {
     );
 
     return {
-      login: clientId,
+      login: this.clientLogin(node, clientId, client),
+      password: client.password,
       subscriptionLink: this.buildSubscriptionLink(node, subId),
     };
   }
@@ -123,6 +126,7 @@ export class ThreeXuiVpnClient implements VpnClient {
       expiresAt: patch.expiresAt,
     };
     const client = this.buildClientSettings(
+      node,
       login,
       login,
       input,
@@ -152,25 +156,73 @@ export class ThreeXuiVpnClient implements VpnClient {
   }
 
   private buildClientSettings(
+    node: VpnNodeConfig,
     clientId: string,
     subId: string,
     input: CreateVpnClientInput,
     enable: boolean,
   ): ThreeXuiClientSettings {
-    return {
-      id: clientId,
+    const base: ThreeXuiClientSettings = {
       email: this.buildClientEmail(input),
       enable,
       expiryTime:
         input.expiresAt?.getTime() ??
         Number(process.env.VPN_3XUI_CLIENT_EXPIRY_TIME ?? 0),
-      flow: process.env.VPN_3XUI_CLIENT_FLOW ?? 'xtls-rprx-vision',
       limitIp: Math.max(Number(input.limitIp ?? 0), 0),
       reset: 0,
       subId,
       tgId: '',
       totalGB: Number(process.env.VPN_3XUI_CLIENT_TOTAL_GB ?? 0),
     };
+
+    switch (this.normalizedProtocol(node)) {
+      case 'trojan':
+        return {
+          ...base,
+          password: clientId,
+          flow: node.clientFlow ?? process.env.VPN_3XUI_CLIENT_FLOW ?? '',
+        };
+      case 'shadowsocks':
+        return {
+          ...base,
+          method:
+            process.env.VPN_3XUI_SHADOWSOCKS_METHOD ??
+            'chacha20-ietf-poly1305',
+          password: clientId,
+        };
+      case 'vless':
+      case 'vmess':
+      default:
+        return {
+          ...base,
+          id: clientId,
+          flow:
+            node.clientFlow ??
+            process.env.VPN_3XUI_CLIENT_FLOW ??
+            'xtls-rprx-vision',
+        };
+    }
+  }
+
+  private clientLogin(
+    node: VpnNodeConfig,
+    clientId: string,
+    client: ThreeXuiClientSettings,
+  ): string {
+    switch (this.normalizedProtocol(node)) {
+      case 'trojan':
+        return client.password ?? clientId;
+      case 'shadowsocks':
+        return client.email;
+      case 'vless':
+      case 'vmess':
+      default:
+        return client.id ?? clientId;
+    }
+  }
+
+  private normalizedProtocol(node: VpnNodeConfig): string {
+    return node.protocol?.trim().toLowerCase() ?? 'vless';
   }
 
   private async postWithSession(

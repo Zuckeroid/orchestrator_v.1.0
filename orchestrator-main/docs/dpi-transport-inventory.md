@@ -230,7 +230,7 @@ Recommended fields:
 - `name`;
 - `provider`;
 - `providerInboundId`;
-- `protocol`: `vless`, `vmess`, `trojan`;
+- `protocol`: `vless`, `vmess`, `trojan`, `shadowsocks`, `wireguard`;
 - `transport`: `tcp`, `ws`, `grpc`, `h2`, `http`;
 - `security`: `none`, `tls`, `reality`;
 - `port`;
@@ -299,6 +299,9 @@ Admin UI:
 4. Extend admin UI under VPN Nodes.
 5. Extend provider interface and 3x-ui client for inbound inventory/checking.
 6. Add profile-aware client creation, while falling back to `node.inboundId`.
+   Runtime auto-issue supports `vless`, `vmess`, `trojan`, `shadowsocks`.
+   `wireguard` is inventoried and visible first, then promoted after provider
+   client payloads are validated.
 7. Add telemetry `transportProfileId` and profile columns in DPI Monitor.
 8. Add policy engine decisions after enough telemetry exists.
 9. Add Android probing for all active profiles returned by the orchestrator.
@@ -310,4 +313,3 @@ Admin UI:
 - DPI conclusions need repeated samples, not one failed probe.
 - Telemetry can grow quickly; keep hourly rollups as the primary UI source.
 - App auto-switching must be conservative to avoid reconnect loops.
-

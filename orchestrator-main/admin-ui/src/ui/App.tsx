@@ -261,6 +261,158 @@ const emptyTransportProfileForm: TransportProfileFormState = {
   status: 'draft',
 };
 
+const transportProfileTemplates: Array<{
+  id: string;
+  label: string;
+  description: string;
+  values: Partial<TransportProfileFormState>;
+}> = [
+  {
+    id: 'vless-reality-tcp',
+    label: 'VLESS Reality TCP',
+    description: '443, Reality, Vision flow, Chrome fingerprint',
+    values: {
+      name: 'VLESS Reality TCP 443',
+      protocol: 'vless',
+      transport: 'tcp',
+      security: 'reality',
+      port: '443',
+      sni: '',
+      hostHeader: '',
+      path: '',
+      serviceName: '',
+      alpn: 'h2,http/1.1',
+      fingerprint: 'chrome',
+      flow: 'xtls-rprx-vision',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '10',
+      weight: '100',
+    },
+  },
+  {
+    id: 'vless-ws-tls',
+    label: 'VLESS WebSocket TLS',
+    description: '443, WS path /znet, TLS SNI/Host ready',
+    values: {
+      name: 'VLESS WS TLS 443',
+      protocol: 'vless',
+      transport: 'ws',
+      security: 'tls',
+      port: '443',
+      sni: '',
+      hostHeader: '',
+      path: '/znet',
+      serviceName: '',
+      alpn: 'h2,http/1.1',
+      fingerprint: 'chrome',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '20',
+      weight: '100',
+    },
+  },
+  {
+    id: 'vless-grpc-tls',
+    label: 'VLESS gRPC TLS',
+    description: '443, gRPC service znet, TLS',
+    values: {
+      name: 'VLESS gRPC TLS 443',
+      protocol: 'vless',
+      transport: 'grpc',
+      security: 'tls',
+      port: '443',
+      sni: '',
+      hostHeader: '',
+      path: '',
+      serviceName: 'znet',
+      alpn: 'h2',
+      fingerprint: 'chrome',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '30',
+      weight: '100',
+    },
+  },
+  {
+    id: 'trojan-tls-tcp',
+    label: 'Trojan TLS TCP',
+    description: '443, plain TCP over TLS',
+    values: {
+      name: 'Trojan TLS TCP 443',
+      protocol: 'trojan',
+      transport: 'tcp',
+      security: 'tls',
+      port: '443',
+      sni: '',
+      hostHeader: '',
+      path: '',
+      serviceName: '',
+      alpn: 'h2,http/1.1',
+      fingerprint: 'chrome',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '40',
+      weight: '80',
+    },
+  },
+  {
+    id: 'shadowsocks-tcp',
+    label: 'Shadowsocks TCP',
+    description: 'TCP fallback profile, no TLS/Reality fields',
+    values: {
+      name: 'Shadowsocks TCP',
+      protocol: 'shadowsocks',
+      transport: 'tcp',
+      security: 'none',
+      port: '443',
+      sni: '',
+      hostHeader: '',
+      path: '',
+      serviceName: '',
+      alpn: '',
+      fingerprint: '',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '60',
+      weight: '70',
+    },
+  },
+  {
+    id: 'wireguard-inventory',
+    label: 'WireGuard inventory',
+    description: 'Visible in inventory; not used for auto client issue yet',
+    values: {
+      name: 'WireGuard 51820',
+      protocol: 'wireguard',
+      transport: 'tcp',
+      security: 'none',
+      port: '51820',
+      sni: '',
+      hostHeader: '',
+      path: '',
+      serviceName: '',
+      alpn: '',
+      fingerprint: '',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '300',
+      weight: '10',
+    },
+  },
+];
+
 const PROVISIONS_PAGE_SIZE = 10;
 const CONFIGURATOR_PAGE_SIZE = 10;
 const APP_CATALOG_PAGE_SIZE = 10;
@@ -1657,6 +1809,37 @@ function NodesPanel({
                 className="transport-profile-form"
                 onSubmit={saveTransportProfile}
               >
+                <label className="transport-template-picker">
+                  Template
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      const template = transportProfileTemplates.find(
+                        (item) => item.id === event.target.value,
+                      );
+                      if (!template) {
+                        return;
+                      }
+                      setTransportProfileForm((current) => ({
+                        ...current,
+                        ...template.values,
+                        name:
+                          current.name.trim().length > 0
+                            ? current.name
+                            : template.values.name ?? current.name,
+                        providerInboundId: current.providerInboundId,
+                        status: current.status,
+                      }));
+                    }}
+                  >
+                    <option value="">Choose a preset...</option>
+                    {transportProfileTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.label} - {template.description}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <div className="transport-profile-grid">
                   <label>
                     Name
@@ -1700,6 +1883,8 @@ function NodesPanel({
                       <option value="vless">vless</option>
                       <option value="vmess">vmess</option>
                       <option value="trojan">trojan</option>
+                      <option value="shadowsocks">shadowsocks</option>
+                      <option value="wireguard">wireguard</option>
                     </select>
                   </label>
                   <label>

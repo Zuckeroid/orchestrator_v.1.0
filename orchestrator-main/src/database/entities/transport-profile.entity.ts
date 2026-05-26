@@ -10,7 +10,12 @@ import {
 } from 'typeorm';
 import { VpnNodeEntity } from './vpn-node.entity';
 
-export type TransportProfileProtocol = 'vless' | 'vmess' | 'trojan';
+export type TransportProfileProtocol =
+  | 'vless'
+  | 'vmess'
+  | 'trojan'
+  | 'shadowsocks'
+  | 'wireguard';
 export type TransportProfileTransport = 'tcp' | 'ws' | 'grpc' | 'h2' | 'http';
 export type TransportProfileSecurity = 'none' | 'tls' | 'reality';
 export type TransportProfileStatus =
@@ -115,4 +120,3 @@ export class TransportProfileEntity {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 }
-

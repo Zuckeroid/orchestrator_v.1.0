@@ -99,6 +99,20 @@ export class TransportProfilesService {
     await this.repository.remove(profile);
   }
 
+  async selectRuntimeProfile(
+    nodeId: string,
+  ): Promise<TransportProfileEntity | null> {
+    const activeProfile = await this.selectRuntimeProfileByStatus(
+      nodeId,
+      'active',
+    );
+    if (activeProfile) {
+      return activeProfile;
+    }
+
+    return this.selectRuntimeProfileByStatus(nodeId, 'degraded');
+  }
+
   async syncFromProvider(nodeId: string): Promise<{
     created: number;
     updated: number;
@@ -445,9 +459,46 @@ export class TransportProfilesService {
     const normalized = value?.toLowerCase();
     return normalized === 'vless' ||
       normalized === 'vmess' ||
-      normalized === 'trojan'
+      normalized === 'trojan' ||
+      normalized === 'shadowsocks' ||
+      normalized === 'wireguard'
       ? normalized
       : null;
+  }
+
+  private async selectRuntimeProfileByStatus(
+    nodeId: string,
+    status: TransportProfileStatus,
+  ): Promise<TransportProfileEntity | null> {
+    const profiles = await this.repository.find({
+      where: {
+        nodeId,
+        status,
+      },
+      order: {
+        priority: 'ASC',
+        weight: 'DESC',
+        updatedAt: 'DESC',
+      },
+    });
+
+    return (
+      profiles.find(
+        (profile) =>
+          profile.providerInboundId !== null &&
+          profile.providerInboundId !== undefined &&
+          this.isRuntimeProtocol(profile.protocol),
+      ) ?? null
+    );
+  }
+
+  private isRuntimeProtocol(protocol: TransportProfileProtocol): boolean {
+    return (
+      protocol === 'vless' ||
+      protocol === 'vmess' ||
+      protocol === 'trojan' ||
+      protocol === 'shadowsocks'
+    );
   }
 
   private supportedTransport(value: string | null | undefined): TransportProfileTransport {

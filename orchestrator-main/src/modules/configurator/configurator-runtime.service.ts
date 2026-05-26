@@ -19,12 +19,14 @@ import {
   ProviderAccessStatus,
 } from '../../database/entities/provider-access.entity';
 import { VpnNodeEntity } from '../../database/entities/vpn-node.entity';
+import { TransportProfileEntity } from '../../database/entities/transport-profile.entity';
 import {
   VpnClient,
   VpnClientResult,
   VpnNodeConfig,
 } from '../../integrations/vpn/vpn-client.interface';
 import { VPN_CLIENT } from '../../integrations/vpn/vpn.module';
+import { TransportProfilesService } from '../nodes/transport-profiles.service';
 import { VpnNodesService } from '../nodes/vpn-nodes.service';
 import { DomainEndpointsService } from './domain-endpoints.service';
 
@@ -62,6 +64,7 @@ export class ConfiguratorRuntimeService {
     @Inject(VPN_CLIENT)
     private readonly vpnClient: VpnClient,
     private readonly vpnNodesService: VpnNodesService,
+    private readonly transportProfilesService: TransportProfilesService,
     private readonly domainEndpointsService: DomainEndpointsService,
   ) {}
 
@@ -323,6 +326,7 @@ export class ConfiguratorRuntimeService {
 
     let createdClient: VpnClientResult | null = null;
     let loadIncremented = false;
+    let createdTransportProfile: TransportProfileEntity | null = null;
 
     try {
       const providerMaterial = await this.resolveDeviceProviderMaterial(
@@ -332,6 +336,7 @@ export class ConfiguratorRuntimeService {
       );
       createdClient = providerMaterial.createdClient;
       loadIncremented = providerMaterial.loadIncremented;
+      createdTransportProfile = providerMaterial.transportProfile;
 
       const runtime = await this.buildRuntimeSnapshotFromLink(
         providerMaterial.subscriptionLink,
@@ -382,6 +387,7 @@ export class ConfiguratorRuntimeService {
           },
           provision.vpnNode ?? null,
           'normal',
+          providerMaterial.transportProfile,
         ),
       });
 
@@ -409,7 +415,13 @@ export class ConfiguratorRuntimeService {
       );
 
       if (createdClient && provision.vpnNode) {
-        await this.deleteCreatedClientQuietly(provision.vpnNode, createdClient.login);
+        await this.deleteCreatedClientQuietly(
+          provision.vpnNode,
+          createdClient.login,
+          createdTransportProfile?.providerInboundId ?? undefined,
+          createdTransportProfile?.protocol,
+          createdTransportProfile?.flow ?? undefined,
+        );
       }
       if (loadIncremented && provision.vpnNodeId) {
         await this.vpnNodesService.decrementLoad(provision.vpnNodeId);
@@ -706,6 +718,7 @@ export class ConfiguratorRuntimeService {
     subscriptionLink: string;
     createdClient: VpnClientResult | null;
     loadIncremented: boolean;
+    transportProfile: TransportProfileEntity | null;
   }> {
     if (!provision.vpnNodeId || !provision.vpnNode) {
       throw new Error('VPN node is not selected for this service');
@@ -731,7 +744,9 @@ export class ConfiguratorRuntimeService {
     subscriptionLink: string;
     createdClient: VpnClientResult | null;
     loadIncremented: boolean;
+    transportProfile: TransportProfileEntity | null;
   }> {
+    const transportProfile = await this.selectTransportProfileForNode(node);
     const existingLink = this.readProviderMetadataString(
       providerAccess.providerMetadataJson,
       'subscriptionLink',
@@ -741,27 +756,60 @@ export class ConfiguratorRuntimeService {
       providerAccess.providerMetadataJson,
       'nodeId',
     );
+    const existingTransportProfileId = this.readProviderMetadataString(
+      providerAccess.providerMetadataJson,
+      'transportProfileId',
+    );
+    const existingProviderInboundId = this.readProviderMetadataNumber(
+      providerAccess.providerMetadataJson,
+      'providerInboundId',
+    );
+    const selectedInboundId = transportProfile?.providerInboundId ?? node.inboundId ?? null;
+    const isSameTransportProfile =
+      !transportProfile ||
+      existingTransportProfileId === transportProfile.id ||
+      (!existingTransportProfileId &&
+        selectedInboundId !== null &&
+        (existingProviderInboundId === selectedInboundId ||
+          (existingProviderInboundId === null && selectedInboundId === node.inboundId)));
     if (
       providerAccess.status === 'active' &&
       existingLogin &&
       existingLink &&
-      (!existingNodeId || existingNodeId === node.id)
+      (!existingNodeId || existingNodeId === node.id) &&
+      isSameTransportProfile
     ) {
       return {
         login: existingLogin,
         subscriptionLink: existingLink,
         createdClient: null,
         loadIncremented: false,
+        transportProfile,
       };
     }
 
-    if (existingLogin && existingNodeId && existingNodeId !== node.id) {
+    if (
+      existingLogin &&
+      ((existingNodeId && existingNodeId !== node.id) || !isSameTransportProfile)
+    ) {
       const oldNode = await this.vpnNodesService
-        .findById(existingNodeId)
+        .findById(existingNodeId ?? node.id)
         .catch(() => null);
       if (oldNode) {
-        await this.deleteCreatedClientQuietly(oldNode, existingLogin);
-        await this.vpnNodesService.decrementLoad(existingNodeId);
+        await this.deleteCreatedClientQuietly(
+          oldNode,
+          existingLogin,
+          existingProviderInboundId ?? undefined,
+          this.readProviderMetadataString(
+            providerAccess.providerMetadataJson,
+            'transportProtocol',
+          ) ?? undefined,
+          this.readProviderMetadataString(
+            providerAccess.providerMetadataJson,
+            'transportFlow',
+          ) ?? undefined,
+        );
+        await this.vpnNodesService.decrementLoad(existingNodeId ?? node.id);
       }
     }
 
@@ -774,7 +822,7 @@ export class ConfiguratorRuntimeService {
 
     try {
       const createdClient = await this.vpnClient.createClient(
-        this.toVpnNodeConfig(node),
+        this.toVpnNodeConfig(node, transportProfile),
         {
           email: provision.email,
           externalSubscriptionId: this.buildDeviceExternalSubscriptionId(
@@ -792,6 +840,7 @@ export class ConfiguratorRuntimeService {
         subscriptionLink: createdClient.subscriptionLink,
         createdClient,
         loadIncremented,
+        transportProfile,
       };
     } catch (error) {
       await this.vpnNodesService.decrementLoad(node.id);
@@ -827,7 +876,22 @@ export class ConfiguratorRuntimeService {
         login &&
         (providerAccess.status === 'active' || providerAccess.status === 'failed')
       ) {
-        await this.deleteCreatedClientQuietly(node, login);
+        await this.deleteCreatedClientQuietly(
+          node,
+          login,
+          this.readProviderMetadataNumber(
+            providerAccess.providerMetadataJson,
+            'providerInboundId',
+          ) ?? undefined,
+          this.readProviderMetadataString(
+            providerAccess.providerMetadataJson,
+            'transportProtocol',
+          ) ?? undefined,
+          this.readProviderMetadataString(
+            providerAccess.providerMetadataJson,
+            'transportFlow',
+          ) ?? undefined,
+        );
         if (nodeId) {
           await this.vpnNodesService.decrementLoad(nodeId);
         }
@@ -844,9 +908,15 @@ export class ConfiguratorRuntimeService {
   private async deleteCreatedClientQuietly(
     node: VpnNodeEntity,
     login: string,
+    inboundId?: number,
+    protocol?: string,
+    clientFlow?: string,
   ): Promise<void> {
     try {
-      await this.vpnClient.deleteClient(this.toVpnNodeConfig(node), login);
+      await this.vpnClient.deleteClient(
+        this.toVpnNodeConfig(node, null, inboundId, protocol, clientFlow),
+        login,
+      );
     } catch (error) {
       this.logger.warn(
         `Provider client cleanup failed on node ${node.id}, login ${login}: ${
@@ -864,6 +934,38 @@ export class ConfiguratorRuntimeService {
     return typeof value === 'string' && value.trim() !== ''
       ? value.trim()
       : null;
+  }
+
+  private readProviderMetadataNumber(
+    metadata: Record<string, unknown> | null | undefined,
+    key: string,
+  ): number | null {
+    const value = metadata?.[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+  }
+
+  private async selectTransportProfileForNode(
+    node: VpnNodeEntity,
+  ): Promise<TransportProfileEntity | null> {
+    try {
+      return await this.transportProfilesService.selectRuntimeProfile(node.id);
+    } catch (error) {
+      this.logger.warn(
+        `Transport profile selection failed on node ${node.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+
+      return null;
+    }
   }
 
   private hasVpnMaterial(provision: ProvisionEntity): boolean {
@@ -1011,14 +1113,14 @@ export class ConfiguratorRuntimeService {
 
     try {
       const decoded = Buffer.from(padded, 'base64').toString('utf8');
-      return /(?:vless|vmess|trojan):\/\//i.test(decoded) ? decoded : null;
+      return /(?:vless|vmess|trojan|ss):\/\//i.test(decoded) ? decoded : null;
     } catch {
       return null;
     }
   }
 
   private isSupportedNodeLink(value: string): boolean {
-    return /^(vless|vmess|trojan):\/\//i.test(value.trim());
+    return /^(vless|vmess|trojan|ss):\/\//i.test(value.trim());
   }
 
   private parseLink(rawLink: string): ParsedLink {
@@ -1031,6 +1133,9 @@ export class ConfiguratorRuntimeService {
     }
     if (/^vmess:\/\//i.test(normalized)) {
       return this.parseVmess(normalized);
+    }
+    if (/^ss:\/\//i.test(normalized)) {
+      return this.parseShadowsocks(normalized);
     }
 
     throw new Error(
@@ -1185,6 +1290,78 @@ export class ConfiguratorRuntimeService {
     }, {});
   }
 
+  private parseShadowsocks(rawLink: string): ParsedLink {
+    const stripped = rawLink.replace(/^ss:\/\//i, '').trim();
+    const bodyWithQuery = stripped.split('#')[0] ?? '';
+    const body = bodyWithQuery.split('?')[0] ?? '';
+    let credentials = '';
+    let hostPort = '';
+
+    if (body.includes('@')) {
+      const atIndex = body.lastIndexOf('@');
+      const credentialsToken = body.slice(0, atIndex);
+      hostPort = body.slice(atIndex + 1);
+      credentials =
+        this.tryDecodeBase64Token(credentialsToken) ??
+        this.decodePart(credentialsToken);
+    } else {
+      const decoded = this.tryDecodeBase64Token(body);
+      if (!decoded || !decoded.includes('@')) {
+        throw new Error('Shadowsocks link is missing endpoint');
+      }
+      const atIndex = decoded.lastIndexOf('@');
+      credentials = decoded.slice(0, atIndex);
+      hostPort = decoded.slice(atIndex + 1);
+    }
+
+    const separator = credentials.indexOf(':');
+    const method = separator > 0 ? credentials.slice(0, separator) : '';
+    const password = separator > 0 ? credentials.slice(separator + 1) : '';
+    const endpoint = new URL(`ss://placeholder@${hostPort}`);
+    const host = endpoint.hostname;
+    const port = Number(endpoint.port || 8388);
+
+    if (!method || !password || !host) {
+      throw new Error('Shadowsocks link is missing method, password or host');
+    }
+
+    return {
+      protocol: 'shadowsocks',
+      outbound: {
+        tag: 'proxy',
+        protocol: 'shadowsocks',
+        settings: {
+          servers: [
+            {
+              address: host,
+              port,
+              method,
+              password,
+            },
+          ],
+        },
+      },
+    };
+  }
+
+  private tryDecodeBase64Token(value: string): string | null {
+    const normalized = this.decodePart(value).replace(/\s+/g, '');
+    if (!normalized || !/^[A-Za-z0-9+/_=-]+$/.test(normalized)) {
+      return null;
+    }
+
+    const padded = normalized
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+
+    try {
+      return Buffer.from(padded, 'base64').toString('utf8');
+    } catch {
+      return null;
+    }
+  }
+
   private buildXrayConfig(primaryOutbound: Record<string, unknown>): Record<string, unknown> {
     return {
       log: {
@@ -1301,6 +1478,7 @@ export class ConfiguratorRuntimeService {
 
     let createdClient: VpnClientResult | null = null;
     let loadIncremented = false;
+    let createdTransportProfile: TransportProfileEntity | null = null;
     try {
       const providerAccess = await this.getOrCreateProviderAccess(
         deviceConfig,
@@ -1315,6 +1493,7 @@ export class ConfiguratorRuntimeService {
       );
       createdClient = providerMaterial.createdClient;
       loadIncremented = providerMaterial.loadIncremented;
+      createdTransportProfile = providerMaterial.transportProfile;
 
       const runtime = await this.buildRuntimeSnapshotFromLink(
         providerMaterial.subscriptionLink,
@@ -1339,6 +1518,7 @@ export class ConfiguratorRuntimeService {
           },
           awayNode,
           'away',
+          providerMaterial.transportProfile,
         ),
       });
 
@@ -1355,7 +1535,13 @@ export class ConfiguratorRuntimeService {
       );
     } catch (error) {
       if (createdClient) {
-        await this.deleteCreatedClientQuietly(awayNode, createdClient.login);
+        await this.deleteCreatedClientQuietly(
+          awayNode,
+          createdClient.login,
+          createdTransportProfile?.providerInboundId ?? undefined,
+          createdTransportProfile?.protocol,
+          createdTransportProfile?.flow ?? undefined,
+        );
       }
       if (loadIncremented) {
         await this.vpnNodesService.decrementLoad(awayNode.id);
@@ -1770,6 +1956,7 @@ export class ConfiguratorRuntimeService {
     },
     node: VpnNodeEntity | null = provision.vpnNode ?? null,
     profile: 'normal' | 'away' = 'normal',
+    transportProfile: TransportProfileEntity | null = null,
   ): Record<string, unknown> {
     return {
       externalSubscriptionId: provision.externalSubscriptionId,
@@ -1781,6 +1968,14 @@ export class ConfiguratorRuntimeService {
       subscriptionLink,
       nodeId: node?.id ?? provision.vpnNodeId ?? null,
       nodeHost: node?.host ?? provision.vpnNode?.host ?? null,
+      transportProfileId: transportProfile?.id ?? null,
+      transportProfileName: transportProfile?.name ?? null,
+      providerInboundId:
+        transportProfile?.providerInboundId ?? node?.inboundId ?? null,
+      transportProtocol: transportProfile?.protocol ?? null,
+      transportTransport: transportProfile?.transport ?? null,
+      transportSecurity: transportProfile?.security ?? null,
+      transportFlow: transportProfile?.flow ?? null,
       resolvedLink: runtime.resolvedLink,
       sourceCount: runtime.sourceCount,
       protocol: runtime.protocol,
@@ -1864,13 +2059,27 @@ export class ConfiguratorRuntimeService {
     return `${provision.externalSubscriptionId}_device_${suffix}${profileSuffix}`;
   }
 
-  private toVpnNodeConfig(node: VpnNodeEntity): VpnNodeConfig {
+  private toVpnNodeConfig(
+    node: VpnNodeEntity,
+    transportProfile: TransportProfileEntity | null = null,
+    inboundIdOverride?: number,
+    protocolOverride?: string,
+    clientFlowOverride?: string,
+  ): VpnNodeConfig {
+    const inboundId =
+      inboundIdOverride ??
+      transportProfile?.providerInboundId ??
+      node.inboundId ??
+      undefined;
+
     return {
       id: node.id,
       host: node.host,
       apiKey: node.apiKey,
       apiVersion: node.apiVersion ?? undefined,
-      inboundId: node.inboundId ?? undefined,
+      inboundId,
+      protocol: protocolOverride ?? transportProfile?.protocol,
+      clientFlow: clientFlowOverride ?? transportProfile?.flow ?? undefined,
       subscriptionBaseUrl: node.subscriptionBaseUrl ?? undefined,
     };
   }

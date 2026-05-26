@@ -4,6 +4,8 @@ export interface VpnNodeConfig {
   apiKey: string;
   apiVersion?: string;
   inboundId?: number;
+  protocol?: string;
+  clientFlow?: string;
   subscriptionBaseUrl?: string;
 }
 

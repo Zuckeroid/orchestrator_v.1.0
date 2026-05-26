@@ -733,6 +733,10 @@ input[type="checkbox"] {
   margin-bottom: 18px;
 }
 
+.transport-template-picker {
+  max-width: 680px;
+}
+
 .transport-profile-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(150px, 1fr));

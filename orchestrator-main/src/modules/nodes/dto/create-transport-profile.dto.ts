@@ -20,6 +20,8 @@ export const TRANSPORT_PROFILE_PROTOCOLS: TransportProfileProtocol[] = [
   'vless',
   'vmess',
   'trojan',
+  'shadowsocks',
+  'wireguard',
 ];
 
 export const TRANSPORT_PROFILE_TRANSPORTS: TransportProfileTransport[] = [
