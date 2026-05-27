@@ -214,6 +214,37 @@ export class VpnNodesController {
     };
   }
 
+  @Post(':id/transport-profiles/:profileId/preview-provider')
+  async previewTransportProfileProviderPayload(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('profileId', new ParseUUIDPipe()) profileId: string,
+    @Req() request: AdminRequest,
+  ) {
+    const result = await this.transportProfilesService.previewProviderPayload(
+      id,
+      profileId,
+    );
+    await this.auditLogsService.record({
+      actor: request.adminActor,
+      requestId: request.requestId,
+      entityType: 'transport_profile',
+      entityId: profileId,
+      action: 'preview_provider',
+      after: {
+        created: result.created,
+        providerInboundId: result.providerInboundId,
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        ...result,
+        profile: this.serializeTransportProfile(result.profile),
+      },
+    };
+  }
+
   @Post(':id/transport-profiles/:profileId/apply-provider')
   async applyTransportProfileToProvider(
     @Param('id', new ParseUUIDPipe()) id: string,

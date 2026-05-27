@@ -75,6 +75,20 @@ export class TelemetryController {
     };
   }
 
+  @Get('decisions')
+  async decisions(
+    @Query('hours') hours?: string,
+    @Query('refresh') refresh?: string,
+  ) {
+    return {
+      success: true,
+      data: await this.telemetryService.decisions(
+        hours ? Number(hours) : undefined,
+        refresh !== 'false',
+      ),
+    };
+  }
+
   @Post('aggregate')
   async aggregate(@Query('hours') hours?: string) {
     return {

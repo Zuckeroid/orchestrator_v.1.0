@@ -764,11 +764,19 @@ input[type="checkbox"] {
   min-width: 920px;
 }
 
+.dpi-decisions-table {
+  min-width: 980px;
+}
+
 .transport-profiles-table td:nth-child(4) .error-text {
   display: inline-block;
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.transport-preview-panel .json-block {
+  max-height: 520px;
 }
 
 .table-panel {

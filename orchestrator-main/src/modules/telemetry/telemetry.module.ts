@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminApiKeyGuard } from '../../common/guards/admin-api-key.guard';
 import { NetworkTelemetryEventEntity } from '../../database/entities/network-telemetry-event.entity';
 import { NetworkTelemetryHourlyEntity } from '../../database/entities/network-telemetry-hourly.entity';
+import { TransportProfileEntity } from '../../database/entities/transport-profile.entity';
 import { TelemetryController } from './telemetry.controller';
 import { TelemetryService } from './telemetry.service';
 
@@ -11,6 +12,7 @@ import { TelemetryService } from './telemetry.service';
     TypeOrmModule.forFeature([
       NetworkTelemetryEventEntity,
       NetworkTelemetryHourlyEntity,
+      TransportProfileEntity,
     ]),
   ],
   controllers: [TelemetryController],

@@ -307,6 +307,43 @@ export class TransportProfilesService {
     }
   }
 
+  async previewProviderPayload(
+    nodeId: string,
+    profileId: string,
+  ): Promise<{
+    created: boolean;
+    profile: TransportProfileEntity;
+    providerInboundId: number | null;
+    input: VpnProviderInboundInput;
+  }> {
+    const [node, profile] = await Promise.all([
+      this.vpnNodesService.findById(nodeId),
+      this.findById(nodeId, profileId),
+    ]);
+    const nodeConfig = {
+      id: node.id,
+      host: node.host,
+      apiKey: node.apiKey,
+      apiVersion: node.apiVersion ?? undefined,
+      subscriptionBaseUrl: node.subscriptionBaseUrl ?? undefined,
+    };
+    const existingInbound = await this.findProviderInbound(
+      nodeConfig,
+      profile.providerInboundId,
+    );
+
+    return {
+      created:
+        profile.providerInboundId === undefined ||
+        profile.providerInboundId === null,
+      profile,
+      providerInboundId: profile.providerInboundId ?? null,
+      input: this.providerInboundInput(profile, existingInbound, {
+        preview: true,
+      }),
+    };
+  }
+
   private normalizeInput(
     input: CreateTransportProfileDto | UpdateTransportProfileDto,
   ): Partial<TransportProfileEntity> {
@@ -552,6 +589,7 @@ export class TransportProfilesService {
   private providerInboundInput(
     profile: TransportProfileEntity,
     existingInbound: VpnProviderInbound | null,
+    options: { preview?: boolean } = {},
   ): VpnProviderInboundInput {
     if (profile.protocol === 'wireguard') {
       throw new BadRequestException(
@@ -564,7 +602,7 @@ export class TransportProfilesService {
       protocol: profile.protocol,
       port: profile.port,
       enable: profile.status !== 'disabled',
-      settings: this.providerSettings(profile, existingInbound),
+      settings: this.providerSettings(profile, existingInbound, options),
       streamSettings: this.providerStreamSettings(profile, existingInbound),
       sniffing: {
         enabled: true,
@@ -578,6 +616,7 @@ export class TransportProfilesService {
   private providerSettings(
     profile: TransportProfileEntity,
     existingInbound: VpnProviderInbound | null,
+    options: { preview?: boolean },
   ): Record<string, unknown> {
     const existingSettings = existingInbound?.settings ?? {};
     const clients = Array.isArray(existingSettings.clients)
@@ -600,7 +639,11 @@ export class TransportProfilesService {
             this.stringAt(existingSettings, 'method') ??
             process.env.VPN_3XUI_SHADOWSOCKS_METHOD ??
             '2022-blake3-aes-256-gcm',
-          password: this.shadowsocksPassword(profile, existingSettings),
+          password: this.shadowsocksPassword(
+            profile,
+            existingSettings,
+            options,
+          ),
           network: 'tcp',
           clients,
           ivCheck: Boolean(existingSettings.ivCheck),
@@ -670,12 +713,17 @@ export class TransportProfilesService {
   private shadowsocksPassword(
     profile: TransportProfileEntity,
     existingSettings: Record<string, unknown>,
+    options: { preview?: boolean },
   ): string {
     const existing =
       this.stringAt(existingSettings, 'password') ??
       this.stringAt(profile.metadataJson, 'shadowsocksPassword');
     if (existing) {
       return existing;
+    }
+
+    if (options.preview) {
+      return '<generated-on-apply>';
     }
 
     const generated = randomBytes(32).toString('base64');

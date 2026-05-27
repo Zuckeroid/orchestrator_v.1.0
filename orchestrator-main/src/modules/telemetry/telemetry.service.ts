@@ -8,6 +8,7 @@ import {
   NetworkTelemetryResult,
 } from '../../database/entities/network-telemetry-event.entity';
 import { NetworkTelemetryHourlyEntity } from '../../database/entities/network-telemetry-hourly.entity';
+import { TransportProfileEntity } from '../../database/entities/transport-profile.entity';
 import { CreateNetworkTelemetryEventDto } from './dto/create-network-telemetry-event.dto';
 
 export interface NetworkTelemetryFilters {
@@ -61,6 +62,47 @@ export interface DpiMonitorMatrixRow {
   status: 'blocked_suspected' | 'degraded' | 'learning' | 'ok';
 }
 
+interface RawDpiDecisionTelemetryRow {
+  carrierName: string | null;
+  networkType: string | null;
+  nodeId: string | null;
+  protocol: string | null;
+  transport: string | null;
+  total: number;
+  success: number;
+  failed: number;
+  timeout: number;
+  skipped: number;
+  avgLatencyMs: number | null;
+  lastObservedAt: Date | string | null;
+}
+
+export interface DpiDecisionRow {
+  carrierName: string | null;
+  networkType: string | null;
+  nodeId: string;
+  nodeName: string | null;
+  nodeCountry: string | null;
+  profileId: string;
+  profileName: string;
+  providerInboundId: number | null;
+  protocol: string;
+  transport: string;
+  security: string;
+  port: number;
+  sni: string | null;
+  profileStatus: string;
+  total: number;
+  success: number;
+  issueCount: number;
+  failureRate: number;
+  successRate: number;
+  avgLatencyMs: number | null;
+  lastObservedAt: Date | string | null;
+  decision: 'preferred' | 'usable' | 'watch' | 'avoid' | 'learning';
+  reason: string;
+}
+
 @Injectable()
 export class TelemetryService {
   constructor(
@@ -68,6 +110,8 @@ export class TelemetryService {
     private readonly repository: Repository<NetworkTelemetryEventEntity>,
     @InjectRepository(NetworkTelemetryHourlyEntity)
     private readonly hourlyRepository: Repository<NetworkTelemetryHourlyEntity>,
+    @InjectRepository(TransportProfileEntity)
+    private readonly transportProfileRepository: Repository<TransportProfileEntity>,
   ) {}
 
   async record(
@@ -374,6 +418,87 @@ export class TelemetryService {
     });
   }
 
+  async decisions(hours = 24, refresh = true): Promise<DpiDecisionRow[]> {
+    const boundedHours = this.boundHours(hours, 24 * 30);
+    if (refresh) {
+      await this.refreshHourlyAggregates(Math.max(boundedHours, 72));
+    }
+    const cutoff = this.hourCutoff(boundedHours);
+    const profiles = await this.transportProfileRepository.find({
+      where: [
+        { status: 'active' },
+        { status: 'degraded' },
+        { status: 'draft' },
+        { status: 'blocked' },
+      ],
+      relations: ['node'],
+      order: {
+        priority: 'ASC',
+        weight: 'DESC',
+        updatedAt: 'DESC',
+      },
+    });
+    const telemetryRows = await this.hourlyRepository
+      .createQueryBuilder('hourly')
+      .select('hourly.carrier_name', 'carrierName')
+      .addSelect('hourly.network_type', 'networkType')
+      .addSelect('hourly.node_id', 'nodeId')
+      .addSelect('hourly.protocol', 'protocol')
+      .addSelect('hourly.transport', 'transport')
+      .addSelect('COALESCE(SUM(hourly.total), 0)::int', 'total')
+      .addSelect('COALESCE(SUM(hourly.success), 0)::int', 'success')
+      .addSelect('COALESCE(SUM(hourly.failed), 0)::int', 'failed')
+      .addSelect('COALESCE(SUM(hourly.timeout), 0)::int', 'timeout')
+      .addSelect('COALESCE(SUM(hourly.skipped), 0)::int', 'skipped')
+      .addSelect('ROUND(AVG(hourly.avg_latency_ms))::int', 'avgLatencyMs')
+      .addSelect('MAX(hourly.last_observed_at)', 'lastObservedAt')
+      .where('hourly.bucket_start >= :cutoff', { cutoff })
+      .andWhere('hourly.node_id IS NOT NULL')
+      .andWhere('hourly.protocol IS NOT NULL')
+      .andWhere('hourly.transport IS NOT NULL')
+      .groupBy('hourly.carrier_name')
+      .addGroupBy('hourly.network_type')
+      .addGroupBy('hourly.node_id')
+      .addGroupBy('hourly.protocol')
+      .addGroupBy('hourly.transport')
+      .getRawMany<RawDpiDecisionTelemetryRow>();
+    const decisions: DpiDecisionRow[] = [];
+
+    for (const profile of profiles) {
+      const matchingRows = telemetryRows.filter(
+        (row) =>
+          row.nodeId === profile.nodeId &&
+          row.protocol === profile.protocol &&
+          row.transport === profile.transport,
+      );
+
+      if (matchingRows.length === 0) {
+        decisions.push(this.decisionRow(profile, null));
+        continue;
+      }
+
+      for (const row of matchingRows) {
+        decisions.push(this.decisionRow(profile, row));
+      }
+    }
+
+    return decisions
+      .sort((left, right) => {
+        const decisionCompare =
+          this.decisionRank(right.decision) - this.decisionRank(left.decision);
+        if (decisionCompare !== 0) {
+          return decisionCompare;
+        }
+
+        return (
+          right.successRate - left.successRate ||
+          left.failureRate - right.failureRate ||
+          left.profileName.localeCompare(right.profileName)
+        );
+      })
+      .slice(0, 200);
+  }
+
   private classify(
     eventType: NetworkTelemetryEventType,
     result: NetworkTelemetryResult,
@@ -423,6 +548,143 @@ export class TelemetryService {
       errorCode: this.clean(input.errorCode),
       errorMessage: this.clean(input.errorMessage)?.slice(0, 1000),
     };
+  }
+
+  private decisionRow(
+    profile: TransportProfileEntity,
+    telemetry: RawDpiDecisionTelemetryRow | null,
+  ): DpiDecisionRow {
+    const total = Number(telemetry?.total ?? 0);
+    const success = Number(telemetry?.success ?? 0);
+    const failed = Number(telemetry?.failed ?? 0);
+    const timeout = Number(telemetry?.timeout ?? 0);
+    const issueCount = failed + timeout;
+    const failureRate =
+      total > 0 ? Math.round((issueCount / total) * 1000) / 10 : 0;
+    const successRate =
+      total > 0 ? Math.round((success / total) * 1000) / 10 : 0;
+    const decision = this.profileDecision(
+      profile.status,
+      total,
+      success,
+      issueCount,
+      failureRate,
+    );
+
+    return {
+      carrierName: telemetry?.carrierName ?? null,
+      networkType: telemetry?.networkType ?? null,
+      nodeId: profile.nodeId,
+      nodeName: profile.node?.name ?? null,
+      nodeCountry: profile.node?.country ?? null,
+      profileId: profile.id,
+      profileName: profile.name,
+      providerInboundId: profile.providerInboundId ?? null,
+      protocol: profile.protocol,
+      transport: profile.transport,
+      security: profile.security,
+      port: profile.port,
+      sni: profile.sni ?? null,
+      profileStatus: profile.status,
+      total,
+      success,
+      issueCount,
+      failureRate,
+      successRate,
+      avgLatencyMs:
+        telemetry?.avgLatencyMs === null || telemetry?.avgLatencyMs === undefined
+          ? null
+          : Number(telemetry.avgLatencyMs),
+      lastObservedAt: telemetry?.lastObservedAt ?? null,
+      decision,
+      reason: this.profileDecisionReason(
+        profile.status,
+        total,
+        success,
+        issueCount,
+        failureRate,
+      ),
+    };
+  }
+
+  private profileDecision(
+    profileStatus: string,
+    total: number,
+    success: number,
+    issueCount: number,
+    failureRate: number,
+  ): DpiDecisionRow['decision'] {
+    if (profileStatus === 'blocked') {
+      return 'avoid';
+    }
+
+    if (total < 3) {
+      return 'learning';
+    }
+
+    if (issueCount >= 3 && failureRate >= 60) {
+      return 'avoid';
+    }
+
+    if (profileStatus === 'degraded' || (issueCount >= 2 && failureRate >= 25)) {
+      return 'watch';
+    }
+
+    if (success >= 3 && failureRate <= 10 && profileStatus === 'active') {
+      return 'preferred';
+    }
+
+    return 'usable';
+  }
+
+  private profileDecisionReason(
+    profileStatus: string,
+    total: number,
+    success: number,
+    issueCount: number,
+    failureRate: number,
+  ): string {
+    if (profileStatus === 'blocked') {
+      return 'Profile is manually marked as blocked';
+    }
+
+    if (total < 3) {
+      return 'Not enough telemetry samples yet';
+    }
+
+    if (issueCount >= 3 && failureRate >= 60) {
+      return 'Repeated failures suggest this route is blocked';
+    }
+
+    if (profileStatus === 'degraded') {
+      return 'Profile is marked degraded';
+    }
+
+    if (issueCount >= 2 && failureRate >= 25) {
+      return 'Failure rate is elevated; keep as fallback only';
+    }
+
+    if (success >= 3 && failureRate <= 10 && profileStatus === 'active') {
+      return 'Stable successful samples in this window';
+    }
+
+    return 'Usable, but not enough clean signal to prefer it';
+  }
+
+  private decisionRank(decision: DpiDecisionRow['decision']): number {
+    switch (decision) {
+      case 'preferred':
+        return 5;
+      case 'usable':
+        return 4;
+      case 'learning':
+        return 3;
+      case 'watch':
+        return 2;
+      case 'avoid':
+      default:
+        return 1;
+    }
   }
 
   private clean(value?: string): string | null {

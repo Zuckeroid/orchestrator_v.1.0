@@ -18,11 +18,13 @@ import {
   QueueOverview,
   StorageBackend,
   TelemetryEvent,
+  TelemetryDecisionRow,
   TelemetryMatrixRow,
   TelemetryOverview,
   TransportProfile,
   TransportProfileApplyResult,
   TransportProfileCheckResult,
+  TransportProfilePreviewResult,
   TransportProfileSyncResult,
   VpnNode,
   VpnNodeCheckResult,
@@ -318,6 +320,30 @@ const transportProfileTemplates: Array<{
     },
   },
   {
+    id: 'vless-ws-tls-8443',
+    label: 'VLESS WS TLS 8443',
+    description: 'Alt HTTPS port, WS path /ws, TLS SNI/Host ready',
+    values: {
+      name: 'VLESS WS TLS 8443',
+      protocol: 'vless',
+      transport: 'ws',
+      security: 'tls',
+      port: '8443',
+      sni: '',
+      hostHeader: '',
+      path: '/ws',
+      serviceName: '',
+      alpn: 'h2,http/1.1',
+      fingerprint: 'chrome',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '25',
+      weight: '90',
+    },
+  },
+  {
     id: 'vless-grpc-tls',
     label: 'VLESS gRPC TLS',
     description: '443, gRPC service znet, TLS',
@@ -339,6 +365,54 @@ const transportProfileTemplates: Array<{
       spiderX: '',
       priority: '30',
       weight: '100',
+    },
+  },
+  {
+    id: 'vless-grpc-tls-2053',
+    label: 'VLESS gRPC TLS 2053',
+    description: 'Alt TLS port, gRPC service znetgrpc',
+    values: {
+      name: 'VLESS gRPC TLS 2053',
+      protocol: 'vless',
+      transport: 'grpc',
+      security: 'tls',
+      port: '2053',
+      sni: '',
+      hostHeader: '',
+      path: '',
+      serviceName: 'znetgrpc',
+      alpn: 'h2',
+      fingerprint: 'chrome',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '35',
+      weight: '85',
+    },
+  },
+  {
+    id: 'vless-tcp-tls',
+    label: 'VLESS TCP TLS',
+    description: 'Plain TCP over TLS without Reality',
+    values: {
+      name: 'VLESS TCP TLS 443',
+      protocol: 'vless',
+      transport: 'tcp',
+      security: 'tls',
+      port: '443',
+      sni: '',
+      hostHeader: '',
+      path: '',
+      serviceName: '',
+      alpn: 'h2,http/1.1',
+      fingerprint: 'chrome',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '38',
+      weight: '85',
     },
   },
   {
@@ -366,6 +440,78 @@ const transportProfileTemplates: Array<{
     },
   },
   {
+    id: 'trojan-ws-tls',
+    label: 'Trojan WS TLS',
+    description: 'Trojan over WebSocket and TLS',
+    values: {
+      name: 'Trojan WS TLS 443',
+      protocol: 'trojan',
+      transport: 'ws',
+      security: 'tls',
+      port: '443',
+      sni: '',
+      hostHeader: '',
+      path: '/trojan',
+      serviceName: '',
+      alpn: 'h2,http/1.1',
+      fingerprint: 'chrome',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '45',
+      weight: '75',
+    },
+  },
+  {
+    id: 'vmess-ws-tls',
+    label: 'VMess WS TLS',
+    description: 'Compatibility fallback over WebSocket and TLS',
+    values: {
+      name: 'VMess WS TLS 443',
+      protocol: 'vmess',
+      transport: 'ws',
+      security: 'tls',
+      port: '443',
+      sni: '',
+      hostHeader: '',
+      path: '/vmess',
+      serviceName: '',
+      alpn: 'h2,http/1.1',
+      fingerprint: 'chrome',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '50',
+      weight: '70',
+    },
+  },
+  {
+    id: 'vless-ws-none-80',
+    label: 'VLESS WS 80',
+    description: 'Plain WebSocket on HTTP port for diagnostics',
+    values: {
+      name: 'VLESS WS 80',
+      protocol: 'vless',
+      transport: 'ws',
+      security: 'none',
+      port: '80',
+      sni: '',
+      hostHeader: '',
+      path: '/znet',
+      serviceName: '',
+      alpn: '',
+      fingerprint: '',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '90',
+      weight: '40',
+    },
+  },
+  {
     id: 'shadowsocks-tcp',
     label: 'Shadowsocks TCP',
     description: 'TCP fallback profile, no TLS/Reality fields',
@@ -387,6 +533,30 @@ const transportProfileTemplates: Array<{
       spiderX: '',
       priority: '60',
       weight: '70',
+    },
+  },
+  {
+    id: 'shadowsocks-tcp-8443',
+    label: 'Shadowsocks TCP 8443',
+    description: 'Alt TCP fallback profile, no TLS/Reality fields',
+    values: {
+      name: 'Shadowsocks TCP 8443',
+      protocol: 'shadowsocks',
+      transport: 'tcp',
+      security: 'none',
+      port: '8443',
+      sni: '',
+      hostHeader: '',
+      path: '',
+      serviceName: '',
+      alpn: '',
+      fingerprint: '',
+      flow: '',
+      publicKey: '',
+      shortId: '',
+      spiderX: '',
+      priority: '65',
+      weight: '65',
     },
   },
   {
@@ -1320,6 +1490,7 @@ function PlanMappingPanel({
           </table>
         </div>
       </section>
+
     </section>
   );
 }
@@ -1610,6 +1781,8 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
   const [profilesLoading, setProfilesLoading] = useState(false);
   const [profilesMessage, setProfilesMessage] = useState('');
   const [profilesError, setProfilesError] = useState('');
+  const [profilePreview, setProfilePreview] =
+    useState<TransportProfilePreviewResult | null>(null);
 
   useEffect(() => {
     if (!selectedNodeId && nodes[0]) {
@@ -1623,6 +1796,7 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
       resetTransportProfileForm();
       setProfilesError('');
       setProfilesMessage('');
+      setProfilePreview(null);
       return;
     }
 
@@ -1658,6 +1832,7 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
     setProfilesLoading(true);
     setProfilesError('');
     setProfilesMessage('');
+    setProfilePreview(null);
     try {
       if (editingProfileId) {
         await api.patch(
@@ -1703,6 +1878,33 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
     }
   }
 
+  async function previewTransportProfileProviderPayload(profile: TransportProfile) {
+    if (!selectedNode) {
+      return;
+    }
+
+    setProfilesLoading(true);
+    setProfilesError('');
+    setProfilesMessage('');
+    try {
+      const result = await api.post<TransportProfilePreviewResult>(
+        `/nodes/vpn/${selectedNode.id}/transport-profiles/${profile.id}/preview-provider`,
+      );
+      setProfilePreview(result);
+      setProfilesMessage(
+        result.created
+          ? 'Preview: this profile will create a new 3x-ui inbound'
+          : `Preview: this profile will update inbound ${result.providerInboundId}`,
+      );
+    } catch (caught) {
+      setProfilePreview(null);
+      setProfilesError(caught instanceof Error ? caught.message : String(caught));
+      await loadTransportProfiles(selectedNode.id);
+    } finally {
+      setProfilesLoading(false);
+    }
+  }
+
   async function applyTransportProfileToProvider(profile: TransportProfile) {
     if (!selectedNode) {
       return;
@@ -1737,6 +1939,7 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
     setProfilesLoading(true);
     setProfilesError('');
     setProfilesMessage('');
+    setProfilePreview(null);
     try {
       const result = await api.post<TransportProfileSyncResult>(
         `/nodes/vpn/${selectedNode.id}/transport-profiles/sync-provider`,
@@ -1768,6 +1971,7 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
     setProfilesLoading(true);
     setProfilesError('');
     setProfilesMessage('');
+    setProfilePreview(null);
     try {
       await api.delete(
         `/nodes/vpn/${selectedNode.id}/transport-profiles/${profile.id}`,
@@ -1786,6 +1990,7 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
 
   function editTransportProfile(profile: TransportProfile) {
     setEditingProfileId(profile.id);
+    setProfilePreview(null);
     setTransportProfileForm({
       name: profile.name,
       providerInboundId:
@@ -1817,6 +2022,7 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
   function resetTransportProfileForm() {
     setEditingProfileId(null);
     setTransportProfileForm(emptyTransportProfileForm);
+    setProfilePreview(null);
   }
 
   function applyTransportProfileTemplate(templateId: string) {
@@ -2273,6 +2479,15 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
                       </button>
                       <button
                         type="button"
+                        onClick={() =>
+                          previewTransportProfileProviderPayload(profile)
+                        }
+                        disabled={profilesLoading}
+                      >
+                        Preview
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => applyTransportProfileToProvider(profile)}
                         disabled={profilesLoading}
                       >
@@ -2299,6 +2514,27 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
           </table>
         </div>
       </section>
+
+      {profilePreview ? (
+        <section className="panel transport-preview-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Provider Preview</h2>
+              <p>
+                {profilePreview.created
+                  ? 'This payload will create a new 3x-ui inbound.'
+                  : `This payload will update inbound ${profilePreview.providerInboundId}.`}
+              </p>
+            </div>
+            <button type="button" onClick={() => setProfilePreview(null)}>
+              Close
+            </button>
+          </div>
+          <pre className="json-block">
+            {JSON.stringify(profilePreview.input, null, 2)}
+          </pre>
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -3317,6 +3553,7 @@ function DpiMonitorPanel({ refreshVersion }: { refreshVersion: number }) {
   const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
   const [hours, setHours] = useState(24);
   const [overview, setOverview] = useState<TelemetryOverview | null>(null);
+  const [decisions, setDecisions] = useState<TelemetryDecisionRow[]>([]);
   const [matrix, setMatrix] = useState<TelemetryMatrixRow[]>([]);
   const [events, setEvents] = useState<TelemetryEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -3329,17 +3566,22 @@ function DpiMonitorPanel({ refreshVersion }: { refreshVersion: number }) {
     setError('');
     try {
       await api.post(`/telemetry/aggregate?hours=${aggregateHours}`);
-      const [nextOverview, nextMatrix, nextEvents] = await Promise.all([
-        api.get<TelemetryOverview>(
-          `/telemetry/overview?hours=${hours}&refresh=false`,
-        ),
-        api.get<TelemetryMatrixRow[]>(
-          `/telemetry/matrix?hours=${hours}&refresh=false`,
-        ),
-        api.get<TelemetryEvent[]>('/telemetry/events?limit=20'),
-      ]);
+      const [nextOverview, nextDecisions, nextMatrix, nextEvents] =
+        await Promise.all([
+          api.get<TelemetryOverview>(
+            `/telemetry/overview?hours=${hours}&refresh=false`,
+          ),
+          api.get<TelemetryDecisionRow[]>(
+            `/telemetry/decisions?hours=${hours}&refresh=false`,
+          ),
+          api.get<TelemetryMatrixRow[]>(
+            `/telemetry/matrix?hours=${hours}&refresh=false`,
+          ),
+          api.get<TelemetryEvent[]>('/telemetry/events?limit=20'),
+        ]);
 
       setOverview(nextOverview);
+      setDecisions(nextDecisions);
       setMatrix(nextMatrix);
       setEvents(nextEvents);
       setMessage(`Updated ${new Date().toLocaleTimeString()}`);
@@ -3429,6 +3671,84 @@ function DpiMonitorPanel({ refreshVersion }: { refreshVersion: number }) {
               generated {formatDate(overview.generatedAt)}
             </span>
           ) : null}
+        </div>
+      </section>
+
+      <section className="panel table-panel">
+        <div className="panel-heading">
+          <h2>Profile Decisions</h2>
+          <p>
+            Candidate ranking by carrier, network and prepared transport profile.
+          </p>
+        </div>
+        <div className="table-wrap">
+          <table className="dpi-decisions-table">
+            <thead>
+              <tr>
+                <th>Carrier</th>
+                <th>Node</th>
+                <th>Profile</th>
+                <th>Signal</th>
+                <th>Decision</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {decisions.map((row) => (
+                <tr
+                  key={`${row.profileId}-${row.carrierName}-${row.networkType}`}
+                >
+                  <td>
+                    <strong>{telemetryLabel(row.carrierName)}</strong>
+                    <span className="cell-note">
+                      {telemetryLabel(row.networkType)}
+                    </span>
+                  </td>
+                  <td>
+                    {telemetryLabel(row.nodeName)}
+                    <span className="cell-note">
+                      {telemetryLabel(row.nodeCountry)}
+                    </span>
+                  </td>
+                  <td>
+                    <strong>{row.profileName}</strong>
+                    <span className="cell-note">
+                      {formatDecisionProfile(row)}
+                    </span>
+                    <span className="cell-note">
+                      inbound {row.providerInboundId ?? 'not linked'}
+                    </span>
+                  </td>
+                  <td>
+                    {row.success}/{row.total} ok
+                    <span className="cell-note">
+                      issue {row.issueCount}, fail {row.failureRate}%
+                    </span>
+                    <span className="cell-note">
+                      avg {row.avgLatencyMs ?? 'none'} ms
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`status-pill ${dpiDecisionTone(row.decision)}`}>
+                      {row.decision}
+                    </span>
+                    <span className="cell-note">{row.profileStatus}</span>
+                  </td>
+                  <td>
+                    {row.reason}
+                    <span className="cell-note">
+                      last {formatDate(row.lastObservedAt)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {decisions.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No profile decisions yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -5930,6 +6250,11 @@ function formatTelemetryProfile(row: TelemetryMatrixRow): string {
   return `${telemetryLabel(row.protocol)} / ${telemetryLabel(row.transport)}`;
 }
 
+function formatDecisionProfile(row: TelemetryDecisionRow): string {
+  const endpoint = row.sni ? `${row.sni}:${row.port}` : `:${row.port}`;
+  return `${row.protocol} / ${row.transport} / ${row.security} ${endpoint}`;
+}
+
 function formatDaysLeft(value?: string | null): string {
   if (!value) {
     return 'none';
@@ -6001,6 +6326,22 @@ function dpiStatusTone(value?: string | null): string {
       return 'red';
     default:
       return 'teal';
+  }
+}
+
+function dpiDecisionTone(value?: string | null): string {
+  switch (value) {
+    case 'preferred':
+      return 'green';
+    case 'usable':
+      return 'teal';
+    case 'watch':
+    case 'learning':
+      return 'yellow';
+    case 'avoid':
+      return 'red';
+    default:
+      return 'slate';
   }
 }
 

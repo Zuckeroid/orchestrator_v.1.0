@@ -268,6 +268,13 @@ export interface TransportProfileApplyResult {
   };
 }
 
+export interface TransportProfilePreviewResult {
+  created: boolean;
+  profile: TransportProfile;
+  providerInboundId?: number | null;
+  input: Record<string, unknown>;
+}
+
 export interface TransportProfileSyncResult {
   created: number;
   updated: number;
@@ -503,6 +510,32 @@ export interface TelemetryMatrixRow {
   avgLatencyMs?: number | null;
   lastObservedAt?: string | null;
   status: 'blocked_suspected' | 'degraded' | 'learning' | 'ok';
+}
+
+export interface TelemetryDecisionRow {
+  carrierName?: string | null;
+  networkType?: string | null;
+  nodeId: string;
+  nodeName?: string | null;
+  nodeCountry?: string | null;
+  profileId: string;
+  profileName: string;
+  providerInboundId?: number | null;
+  protocol: string;
+  transport: string;
+  security: string;
+  port: number;
+  sni?: string | null;
+  profileStatus: string;
+  total: number;
+  success: number;
+  issueCount: number;
+  failureRate: number;
+  successRate: number;
+  avgLatencyMs?: number | null;
+  lastObservedAt?: string | null;
+  decision: 'preferred' | 'usable' | 'watch' | 'avoid' | 'learning';
+  reason: string;
 }
 
 export interface TelemetryEvent {
