@@ -256,6 +256,18 @@ export interface TransportProfileCheckResult {
   check: VpnNodeCheckResult;
 }
 
+export interface TransportProfileApplyResult {
+  created: boolean;
+  profile: TransportProfile;
+  inbound: {
+    id: number;
+    remark?: string | null;
+    protocol?: string | null;
+    port?: number | null;
+    enable?: boolean | null;
+  };
+}
+
 export interface TransportProfileSyncResult {
   created: number;
   updated: number;

@@ -21,6 +21,7 @@ import {
   TelemetryMatrixRow,
   TelemetryOverview,
   TransportProfile,
+  TransportProfileApplyResult,
   TransportProfileCheckResult,
   TransportProfileSyncResult,
   VpnNode,
@@ -1702,6 +1703,32 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
     }
   }
 
+  async function applyTransportProfileToProvider(profile: TransportProfile) {
+    if (!selectedNode) {
+      return;
+    }
+
+    setProfilesLoading(true);
+    setProfilesError('');
+    setProfilesMessage('');
+    try {
+      const result = await api.post<TransportProfileApplyResult>(
+        `/nodes/vpn/${selectedNode.id}/transport-profiles/${profile.id}/apply-provider`,
+      );
+      setProfilesMessage(
+        result.created
+          ? `Created 3x-ui inbound ${result.inbound.id}`
+          : `Updated 3x-ui inbound ${result.inbound.id}`,
+      );
+      await loadTransportProfiles(selectedNode.id);
+    } catch (caught) {
+      setProfilesError(caught instanceof Error ? caught.message : String(caught));
+      await loadTransportProfiles(selectedNode.id);
+    } finally {
+      setProfilesLoading(false);
+    }
+  }
+
   async function syncTransportProfilesFromProvider() {
     if (!selectedNode) {
       return;
@@ -2243,6 +2270,13 @@ function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
                         disabled={profilesLoading}
                       >
                         Check
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyTransportProfileToProvider(profile)}
+                        disabled={profilesLoading}
+                      >
+                        Apply
                       </button>
                       <button
                         className="danger"

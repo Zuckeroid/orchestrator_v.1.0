@@ -727,6 +727,11 @@ input[type="checkbox"] {
   min-width: 0;
 }
 
+.transport-profiles-layout {
+  display: grid;
+  gap: 24px;
+}
+
 .transport-profile-form {
   display: grid;
   gap: 12px;
@@ -739,8 +744,20 @@ input[type="checkbox"] {
 
 .transport-profile-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
   gap: 12px;
+}
+
+@media (max-width: 1400px) {
+  .transport-profile-grid {
+    grid-template-columns: repeat(4, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 1120px) {
+  .transport-profile-grid {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
 }
 
 .transport-profiles-table {

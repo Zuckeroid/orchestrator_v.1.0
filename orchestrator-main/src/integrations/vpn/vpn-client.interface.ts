@@ -46,8 +46,30 @@ export interface VpnProviderInbound {
   raw?: Record<string, unknown> | null;
 }
 
+export interface VpnProviderInboundInput {
+  remark: string;
+  protocol: string;
+  port: number;
+  listen?: string;
+  enable: boolean;
+  expiryTime?: number;
+  total?: number;
+  settings: Record<string, unknown>;
+  streamSettings?: Record<string, unknown> | null;
+  sniffing?: Record<string, unknown> | null;
+}
+
 export interface VpnClient {
   listInbounds(node: VpnNodeConfig): Promise<VpnProviderInbound[]>;
+  createInbound(
+    node: VpnNodeConfig,
+    input: VpnProviderInboundInput,
+  ): Promise<VpnProviderInbound>;
+  updateInbound(
+    node: VpnNodeConfig,
+    inboundId: number,
+    input: VpnProviderInboundInput,
+  ): Promise<VpnProviderInbound>;
   checkNode(
     node: VpnNodeConfig,
     options?: VpnNodeCheckOptions,

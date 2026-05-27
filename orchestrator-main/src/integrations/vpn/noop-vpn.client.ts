@@ -8,6 +8,7 @@ import {
   VpnNodeCheckOptions,
   VpnNodeCheckResult,
   VpnProviderInbound,
+  VpnProviderInboundInput,
 } from './vpn-client.interface';
 
 @Injectable()
@@ -18,6 +19,43 @@ export class NoopVpnClient implements VpnClient {
     this.logger.log(`Mock VPN inbounds listed: ${node.id}`);
 
     return [];
+  }
+
+  async createInbound(
+    node: VpnNodeConfig,
+    input: VpnProviderInboundInput,
+  ): Promise<VpnProviderInbound> {
+    this.logger.log(`Mock VPN inbound created: ${node.id}:${input.port}`);
+
+    return {
+      id: Math.floor(Math.random() * 1_000_000),
+      remark: input.remark,
+      protocol: input.protocol,
+      port: input.port,
+      enable: input.enable,
+      settings: input.settings,
+      streamSettings: input.streamSettings ?? null,
+      raw: null,
+    };
+  }
+
+  async updateInbound(
+    node: VpnNodeConfig,
+    inboundId: number,
+    input: VpnProviderInboundInput,
+  ): Promise<VpnProviderInbound> {
+    this.logger.log(`Mock VPN inbound updated: ${node.id}:${inboundId}`);
+
+    return {
+      id: inboundId,
+      remark: input.remark,
+      protocol: input.protocol,
+      port: input.port,
+      enable: input.enable,
+      settings: input.settings,
+      streamSettings: input.streamSettings ?? null,
+      raw: null,
+    };
   }
 
   async checkNode(

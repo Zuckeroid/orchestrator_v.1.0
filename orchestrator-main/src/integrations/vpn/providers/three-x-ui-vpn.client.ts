@@ -10,6 +10,7 @@ import {
   VpnNodeCheckOptions,
   VpnNodeCheckResult,
   VpnProviderInbound,
+  VpnProviderInboundInput,
 } from '../vpn-client.interface';
 
 interface ThreeXuiCredentials {
@@ -59,6 +60,57 @@ export class ThreeXuiVpnClient implements VpnClient {
     return this.unwrapInboundListResponse(response).map((inbound) =>
       this.normalizeInbound(inbound),
     );
+  }
+
+  async createInbound(
+    node: VpnNodeConfig,
+    input: VpnProviderInboundInput,
+  ): Promise<VpnProviderInbound> {
+    const response = await this.postWithSessionResult<unknown>(
+      node,
+      this.inboundsPath('/add'),
+      this.buildInboundWirePayload(input),
+    );
+    const createdInbound = this.unwrapInboundResponse(response);
+    if (createdInbound) {
+      return this.normalizeInbound(createdInbound);
+    }
+
+    const inbound = await this.findInboundBySignature(node, input);
+    if (!inbound) {
+      throw new Error(
+        `3x-ui created inbound ${input.remark}, but it was not returned by the panel`,
+      );
+    }
+
+    return inbound;
+  }
+
+  async updateInbound(
+    node: VpnNodeConfig,
+    inboundId: number,
+    input: VpnProviderInboundInput,
+  ): Promise<VpnProviderInbound> {
+    const response = await this.postWithSessionResult<unknown>(
+      node,
+      this.inboundsPath(`/update/${inboundId}`),
+      this.buildInboundWirePayload(input),
+    );
+    const updatedInbound = this.unwrapInboundResponse(response);
+    if (updatedInbound) {
+      return this.normalizeInbound(updatedInbound);
+    }
+
+    const fetched = await this.getWithSession<unknown>(
+      node,
+      this.inboundsPath(`/get/${inboundId}`),
+    );
+    const inbound = this.unwrapInboundResponse(fetched);
+    if (!inbound) {
+      throw new Error(`3x-ui inbound ${inboundId} was not found after update`);
+    }
+
+    return this.normalizeInbound(inbound);
   }
 
   async checkNode(
@@ -231,6 +283,15 @@ export class ThreeXuiVpnClient implements VpnClient {
     data: Record<string, unknown>,
     retry = true,
   ): Promise<void> {
+    await this.postWithSessionResult(node, path, data, retry);
+  }
+
+  private async postWithSessionResult<T>(
+    node: VpnNodeConfig,
+    path: string,
+    data: Record<string, unknown>,
+    retry = true,
+  ): Promise<T> {
     const cookie = await this.getSessionCookie(node);
     const response = await axios.post(this.url(node, path), data, {
       headers: {
@@ -246,11 +307,12 @@ export class ThreeXuiVpnClient implements VpnClient {
       (response.status === 401 || response.status === 403 || response.status === 404)
     ) {
       this.sessions.delete(node.id);
-      await this.postWithSession(node, path, data, false);
-      return;
+      return this.postWithSessionResult<T>(node, path, data, false);
     }
 
     this.assertSuccess(response, path);
+
+    return response.data as T;
   }
 
   private async getWithSession<T>(
@@ -359,6 +421,45 @@ export class ThreeXuiVpnClient implements VpnClient {
         ? (JSON.parse(JSON.stringify(inbound)) as Record<string, unknown>)
         : null,
     };
+  }
+
+  private buildInboundWirePayload(
+    input: VpnProviderInboundInput,
+  ): Record<string, unknown> {
+    return {
+      up: 0,
+      down: 0,
+      total: input.total ?? 0,
+      remark: input.remark,
+      enable: input.enable,
+      expiryTime: input.expiryTime ?? 0,
+      trafficReset: 'never',
+      lastTrafficResetTime: 0,
+      listen: input.listen ?? '',
+      port: input.port,
+      protocol: input.protocol,
+      settings: JSON.stringify(input.settings),
+      streamSettings: input.streamSettings
+        ? JSON.stringify(input.streamSettings)
+        : '',
+      sniffing: JSON.stringify(input.sniffing ?? { enabled: false }),
+      tag: '',
+    };
+  }
+
+  private async findInboundBySignature(
+    node: VpnNodeConfig,
+    input: VpnProviderInboundInput,
+  ): Promise<VpnProviderInbound | null> {
+    const inbounds = await this.listInbounds(node);
+    return (
+      inbounds.find(
+        (inbound) =>
+          inbound.remark === input.remark &&
+          inbound.protocol === input.protocol &&
+          inbound.port === input.port,
+      ) ?? null
+    );
   }
 
   private countInboundClients(inbound: ThreeXuiInbound): number {

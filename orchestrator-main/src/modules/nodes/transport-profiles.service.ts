@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -17,6 +18,7 @@ import {
   VpnClient,
   VpnNodeCheckResult,
   VpnProviderInbound,
+  VpnProviderInboundInput,
 } from '../../integrations/vpn/vpn-client.interface';
 import { VPN_CLIENT } from '../../integrations/vpn/vpn.module';
 import { CreateTransportProfileDto } from './dto/create-transport-profile.dto';
@@ -239,6 +241,72 @@ export class TransportProfilesService {
     }
   }
 
+  async applyToProvider(
+    nodeId: string,
+    profileId: string,
+  ): Promise<{
+    created: boolean;
+    profile: TransportProfileEntity;
+    inbound: VpnProviderInbound;
+  }> {
+    const [node, profile] = await Promise.all([
+      this.vpnNodesService.findById(nodeId),
+      this.findById(nodeId, profileId),
+    ]);
+    const nodeConfig = {
+      id: node.id,
+      host: node.host,
+      apiKey: node.apiKey,
+      apiVersion: node.apiVersion ?? undefined,
+      subscriptionBaseUrl: node.subscriptionBaseUrl ?? undefined,
+    };
+    const existingInbound = await this.findProviderInbound(
+      nodeConfig,
+      profile.providerInboundId,
+    );
+    const input = this.providerInboundInput(profile, existingInbound);
+
+    try {
+      const created =
+        profile.providerInboundId === undefined ||
+        profile.providerInboundId === null;
+      const inbound = created
+        ? await this.vpnClient.createInbound(nodeConfig, input)
+        : await this.vpnClient.updateInbound(
+            nodeConfig,
+            profile.providerInboundId as number,
+            input,
+          );
+      const mapped = this.profilePatchFromInbound(inbound);
+      Object.assign(profile, {
+        ...(mapped ?? {
+          providerInboundId: inbound.id,
+          provider: '3x-ui',
+        }),
+        status: inbound.enable === false ? 'disabled' : 'active',
+        lastError: null,
+        metadataJson: {
+          ...(profile.metadataJson ?? {}),
+          ...this.providerMetadata(
+            inbound,
+            created ? '3x-ui:apply:create' : '3x-ui:apply:update',
+          ),
+        },
+      });
+
+      return {
+        created,
+        profile: await this.repository.save(profile),
+        inbound,
+      };
+    } catch (error) {
+      profile.lastError = error instanceof Error ? error.message : String(error);
+      profile.status = this.statusAfterFailedCheck(profile.status);
+      await this.repository.save(profile);
+      throw error;
+    }
+  }
+
   private normalizeInput(
     input: CreateTransportProfileDto | UpdateTransportProfileDto,
   ): Partial<TransportProfileEntity> {
@@ -445,11 +513,274 @@ export class TransportProfilesService {
     return 'active';
   }
 
-  private providerMetadata(inbound: VpnProviderInbound): Record<string, unknown> {
+  private providerMetadata(
+    inbound: VpnProviderInbound,
+    source = '3x-ui:list',
+  ): Record<string, unknown> {
     return {
-      source: '3x-ui:list',
+      source,
       importedAt: new Date().toISOString(),
       rawInbound: inbound.raw ?? null,
+    };
+  }
+
+  private async findProviderInbound(
+    nodeConfig: {
+      id: string;
+      host: string;
+      apiKey: string;
+      apiVersion?: string;
+      subscriptionBaseUrl?: string;
+    },
+    inboundId: number | null | undefined,
+  ): Promise<VpnProviderInbound | null> {
+    if (inboundId === undefined || inboundId === null) {
+      return null;
+    }
+
+    const inbounds = await this.vpnClient.listInbounds(nodeConfig);
+    const inbound = inbounds.find((item) => item.id === inboundId) ?? null;
+    if (!inbound) {
+      throw new BadRequestException(
+        `Provider inbound ${inboundId} was not found on this node`,
+      );
+    }
+
+    return inbound;
+  }
+
+  private providerInboundInput(
+    profile: TransportProfileEntity,
+    existingInbound: VpnProviderInbound | null,
+  ): VpnProviderInboundInput {
+    if (profile.protocol === 'wireguard') {
+      throw new BadRequestException(
+        'WireGuard inbound creation is not automated yet; keep it as inventory or sync it from 3x-ui',
+      );
+    }
+
+    return {
+      remark: profile.name,
+      protocol: profile.protocol,
+      port: profile.port,
+      enable: profile.status !== 'disabled',
+      settings: this.providerSettings(profile, existingInbound),
+      streamSettings: this.providerStreamSettings(profile, existingInbound),
+      sniffing: {
+        enabled: true,
+        destOverride: ['http', 'tls', 'quic', 'fakedns'],
+        metadataOnly: false,
+        routeOnly: false,
+      },
+    };
+  }
+
+  private providerSettings(
+    profile: TransportProfileEntity,
+    existingInbound: VpnProviderInbound | null,
+  ): Record<string, unknown> {
+    const existingSettings = existingInbound?.settings ?? {};
+    const clients = Array.isArray(existingSettings.clients)
+      ? existingSettings.clients
+      : [];
+
+    switch (profile.protocol) {
+      case 'vmess':
+        return { clients };
+      case 'trojan':
+        return {
+          clients,
+          fallbacks: Array.isArray(existingSettings.fallbacks)
+            ? existingSettings.fallbacks
+            : [],
+        };
+      case 'shadowsocks':
+        return {
+          method:
+            this.stringAt(existingSettings, 'method') ??
+            process.env.VPN_3XUI_SHADOWSOCKS_METHOD ??
+            '2022-blake3-aes-256-gcm',
+          password: this.shadowsocksPassword(profile, existingSettings),
+          network: 'tcp',
+          clients,
+          ivCheck: Boolean(existingSettings.ivCheck),
+        };
+      case 'vless':
+      default:
+        return {
+          clients,
+          decryption: 'none',
+          encryption: 'none',
+          fallbacks: Array.isArray(existingSettings.fallbacks)
+            ? existingSettings.fallbacks
+            : [],
+        };
+    }
+  }
+
+  private providerStreamSettings(
+    profile: TransportProfileEntity,
+    existingInbound: VpnProviderInbound | null,
+  ): Record<string, unknown> {
+    if (profile.transport === 'h2' || profile.transport === 'http') {
+      throw new BadRequestException(
+        `${profile.transport} transport creation is not automated yet; use tcp, ws or grpc`,
+      );
+    }
+
+    const securitySettings = this.providerSecuritySettings(
+      profile,
+      existingInbound,
+    );
+    const base = {
+      network: profile.transport,
+      security: profile.security,
+      ...securitySettings,
+    };
+
+    switch (profile.transport) {
+      case 'ws':
+        return {
+          ...base,
+          wsSettings: {
+            path: profile.path ?? '/',
+            host: profile.hostHeader ?? '',
+            headers: profile.hostHeader ? { Host: profile.hostHeader } : {},
+            heartbeatPeriod: 0,
+          },
+        };
+      case 'grpc':
+        return {
+          ...base,
+          grpcSettings: {
+            serviceName: profile.serviceName ?? '',
+            authority: profile.hostHeader ?? '',
+            multiMode: false,
+          },
+        };
+      case 'tcp':
+      default:
+        return {
+          ...base,
+          tcpSettings: {},
+        };
+    }
+  }
+
+  private shadowsocksPassword(
+    profile: TransportProfileEntity,
+    existingSettings: Record<string, unknown>,
+  ): string {
+    const existing =
+      this.stringAt(existingSettings, 'password') ??
+      this.stringAt(profile.metadataJson, 'shadowsocksPassword');
+    if (existing) {
+      return existing;
+    }
+
+    const generated = randomBytes(32).toString('base64');
+    profile.metadataJson = {
+      ...(profile.metadataJson ?? {}),
+      shadowsocksPassword: generated,
+    };
+
+    return generated;
+  }
+
+  private providerSecuritySettings(
+    profile: TransportProfileEntity,
+    existingInbound: VpnProviderInbound | null,
+  ): Record<string, unknown> {
+    switch (profile.security) {
+      case 'tls':
+        return {
+          tlsSettings: {
+            serverName: profile.sni ?? '',
+            minVersion: '1.2',
+            maxVersion: '1.3',
+            cipherSuites: '',
+            rejectUnknownSni: false,
+            disableSystemRoot: false,
+            enableSessionResumption: false,
+            certificates: [],
+            alpn: this.csv(profile.alpn, ['h2', 'http/1.1']),
+            echServerKeys: '',
+            settings: {
+              fingerprint: profile.fingerprint ?? 'chrome',
+              echConfigList: '',
+            },
+          },
+        };
+      case 'reality':
+        return {
+          realitySettings: this.providerRealitySettings(profile, existingInbound),
+        };
+      case 'none':
+      default:
+        return {};
+    }
+  }
+
+  private providerRealitySettings(
+    profile: TransportProfileEntity,
+    existingInbound: VpnProviderInbound | null,
+  ): Record<string, unknown> {
+    const existingReality = this.recordAt(
+      existingInbound?.streamSettings,
+      'realitySettings',
+    );
+    const existingInnerSettings = this.recordAt(existingReality, 'settings');
+    const metadataReality = this.recordAt(profile.metadataJson, 'realitySettings');
+    const privateKey = this.firstString(
+      this.stringAt(existingReality, 'privateKey'),
+      this.stringAt(metadataReality, 'privateKey'),
+      this.stringAt(profile.metadataJson, 'privateKey'),
+    );
+    const target = this.firstString(
+      this.stringAt(existingReality, 'target'),
+      this.stringAt(metadataReality, 'target'),
+      this.stringAt(profile.metadataJson, 'target'),
+    );
+
+    if (!privateKey || !target) {
+      throw new BadRequestException(
+        'Reality inbound creation needs server privateKey and target. Sync an existing Reality inbound from 3x-ui first, or use TLS/none for automatic creation.',
+      );
+    }
+
+    return {
+      show: Boolean(existingReality?.show),
+      xver:
+        typeof existingReality?.xver === 'number' ? existingReality.xver : 0,
+      target,
+      serverNames: profile.sni
+        ? [profile.sni]
+        : this.stringArray(existingReality?.serverNames),
+      privateKey,
+      minClientVer: this.stringAt(existingReality, 'minClientVer') ?? '',
+      maxClientVer: this.stringAt(existingReality, 'maxClientVer') ?? '',
+      maxTimediff:
+        typeof existingReality?.maxTimediff === 'number'
+          ? existingReality.maxTimediff
+          : 0,
+      shortIds: profile.shortId
+        ? [profile.shortId]
+        : this.stringArray(existingReality?.shortIds),
+      mldsa65Seed: this.stringAt(existingReality, 'mldsa65Seed') ?? '',
+      settings: {
+        publicKey:
+          profile.publicKey ?? this.stringAt(existingInnerSettings, 'publicKey') ?? '',
+        fingerprint:
+          profile.fingerprint ??
+          this.stringAt(existingInnerSettings, 'fingerprint') ??
+          'chrome',
+        serverName:
+          profile.sni ?? this.stringAt(existingInnerSettings, 'serverName') ?? '',
+        spiderX:
+          profile.spiderX ?? this.stringAt(existingInnerSettings, 'spiderX') ?? '/',
+        mldsa65Verify:
+          this.stringAt(existingInnerSettings, 'mldsa65Verify') ?? '',
+      },
     };
   }
 
@@ -586,6 +917,29 @@ export class TransportProfilesService {
     );
 
     return values.length > 0 ? values.join(',') : null;
+  }
+
+  private stringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return typeof value === 'string' && value.trim() !== ''
+        ? [value.trim()]
+        : [];
+    }
+
+    return value
+      .filter(
+        (item): item is string => typeof item === 'string' && item.trim() !== '',
+      )
+      .map((item) => item.trim());
+  }
+
+  private csv(value: string | null | undefined, fallback: string[]): string[] {
+    const values = value
+      ?.split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+
+    return values && values.length > 0 ? values : fallback;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {
