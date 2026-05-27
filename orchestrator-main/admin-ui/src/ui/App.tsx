@@ -31,6 +31,7 @@ type TabId =
   | 'dashboard'
   | 'plans'
   | 'nodes'
+  | 'transport-profiles'
   | 'storage'
   | 'provisions'
   | 'configurator'
@@ -856,6 +857,7 @@ export function App() {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'plans', label: 'Plan Mapping' },
     { id: 'nodes', label: 'VPN Nodes' },
+    { id: 'transport-profiles', label: 'Transport Profiles' },
     { id: 'storage', label: 'Storage Backends' },
     { id: 'provisions', label: 'Provisions' },
     { id: 'configurator', label: 'Configurator' },
@@ -946,6 +948,9 @@ export function App() {
             onEnable={enableNode}
             onDelete={deleteNode}
           />
+        ) : null}
+        {activeTab === 'transport-profiles' ? (
+          <TransportProfilesPanel nodes={view.nodes} />
         ) : null}
         {activeTab === 'storage' ? (
           <StorageBackendsPanel
@@ -1344,11 +1349,257 @@ function NodesPanel({
   onDelete: (id: string) => void;
 }) {
   const isEditing = editingNodeId !== null;
-  const selectedNode = useMemo(
-    () => nodes.find((node) => node.id === editingNodeId) ?? null,
-    [editingNodeId, nodes],
+
+  return (
+    <section className="split-layout">
+      <form className="panel form-panel" onSubmit={onSubmit}>
+        <h2>{isEditing ? 'Edit VPN Node' : 'Add VPN Node'}</h2>
+        <label>
+          Name
+          <input
+            required
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+          />
+        </label>
+        <label>
+          Country
+          <input
+            placeholder="Netherlands / NL"
+            value={form.country}
+            onChange={(event) =>
+              setForm({ ...form, country: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          VDS provider
+          <input
+            placeholder="Aeza / Timeweb / Selectel"
+            value={form.vdsProvider}
+            onChange={(event) =>
+              setForm({ ...form, vdsProvider: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Host
+          <input
+            required
+            value={form.host}
+            onChange={(event) => setForm({ ...form, host: event.target.value })}
+          />
+        </label>
+        <label>
+          3x-ui username
+          <input
+            required={!isEditing}
+            placeholder={isEditing ? 'Leave blank to keep current' : 'admin'}
+            value={form.username}
+            onChange={(event) =>
+              setForm({ ...form, username: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          3x-ui password
+          <input
+            required={!isEditing}
+            type="password"
+            placeholder={isEditing ? 'Leave blank to keep current' : 'secret'}
+            value={form.password}
+            onChange={(event) =>
+              setForm({ ...form, password: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Fallback inbound ID
+          <input
+            required
+            type="number"
+            min="0"
+            value={form.inboundId}
+            onChange={(event) =>
+              setForm({ ...form, inboundId: event.target.value })
+            }
+          />
+          <small>
+            Legacy fallback. New clients use active Transport Profiles first;
+            this inbound is used only when no runtime profile is available.
+          </small>
+        </label>
+        <label>
+          Provider subscription URL prefix
+          <input
+            placeholder="https://109.120.140.251:2096/sub_9fK3xL8pQ2mZ7rT"
+            value={form.subscriptionBaseUrl}
+            onChange={(event) =>
+              setForm({ ...form, subscriptionBaseUrl: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Usage scope
+          <select
+            value={form.usageScope}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                usageScope: event.target.value as VpnNodeFormState['usageScope'],
+              })
+            }
+          >
+            <option value="general">General pool</option>
+            <option value="away">Away profile only</option>
+          </select>
+        </label>
+        <label>
+          Capacity
+          <input
+            required
+            type="number"
+            min="1"
+            value={form.capacity}
+            onChange={(event) =>
+              setForm({ ...form, capacity: event.target.value })
+            }
+          />
+        </label>
+        <div className="form-actions">
+          <button className="primary" type="submit">
+            {isEditing ? 'Save node' : 'Add node'}
+          </button>
+          {isEditing ? (
+            <>
+              <button className="danger" type="button" onClick={() => onDelete(editingNodeId!)}>
+                Delete node
+              </button>
+              <button type="button" onClick={onCancel}>
+                Cancel
+              </button>
+            </>
+          ) : null}
+        </div>
+      </form>
+      <section className="panel table-panel">
+        <h2>VPN Nodes</h2>
+        <div className="table-wrap">
+          <table className="nodes-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>VDS Provider</th>
+                  <th>Host</th>
+                  <th>Role</th>
+                  <th>Health</th>
+                  <th>Load</th>
+                  <th>Fallback inbound</th>
+                  <th>Checked</th>
+                  <th>Last error</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nodes.map((node) => (
+                  <tr key={node.id}>
+                    <td>
+                      <span className="node-label">
+                        {renderCountryFlag(node.country)}
+                        <span>{node.name ?? 'unnamed'}</span>
+                      </span>
+                    </td>
+                    <td>{renderProviderLink(node.vdsProvider)}</td>
+                    <td>
+                      <a href={node.host} target="_blank" rel="noreferrer">
+                        {node.host}
+                      </a>
+                      {node.subscriptionBaseUrl ? (
+                        <span className="cell-note">{node.subscriptionBaseUrl}</span>
+                      ) : null}
+                    </td>
+                    <td>
+                      <span className={`status-pill ${node.usageScope === 'away' ? 'teal' : 'green'}`}>
+                        {node.usageScope === 'away' ? 'away only' : 'general'}
+                      </span>
+                      <span className="cell-note">{node.status}</span>
+                    </td>
+                    <td>
+                      <span
+                        className={`status-pill ${healthTone(node.healthStatus)}`}
+                      >
+                        {node.healthStatus}
+                      </span>
+                      {node.failureCount > 0 ? (
+                        <span className="cell-note">fails: {node.failureCount}</span>
+                      ) : null}
+                    </td>
+                    <td>
+                      {node.currentLoad}/{node.capacity}
+                    </td>
+                    <td>{node.inboundId ?? 'none'}</td>
+                    <td>
+                      {formatDate(node.lastHealthCheckAt)}
+                      {node.lastSuccessfulHealthCheckAt ? (
+                        <span className="cell-note">
+                          last ok: {formatDate(node.lastSuccessfulHealthCheckAt)}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      {node.lastError ? (
+                        <span className="error-text">{node.lastError}</span>
+                      ) : (
+                        <span className="muted">none</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="row-actions node-actions">
+                        <button onClick={() => onEdit(node)} type="button">
+                          Edit
+                        </button>
+                        {node.isActive ? (
+                          <button onClick={() => onDisable(node.id)} type="button">
+                            Disable
+                          </button>
+                        ) : (
+                          <button
+                            className="primary"
+                            onClick={() => onEnable(node.id)}
+                            type="button"
+                          >
+                            Enable
+                          </button>
+                        )}
+                        <button
+                          className="node-check-action"
+                          onClick={() => onCheck(node.id)}
+                          type="button"
+                        >
+                          Check now
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
   );
+}
+
+function TransportProfilesPanel({ nodes }: { nodes: VpnNode[] }) {
   const api = useMemo(() => new ApiClient(DEFAULT_API_SETTINGS), []);
+  const [selectedNodeId, setSelectedNodeId] = useState('');
+  const selectedNode = useMemo(
+    () =>
+      nodes.find((node) => node.id === selectedNodeId) ??
+      nodes[0] ??
+      null,
+    [nodes, selectedNodeId],
+  );
   const [transportProfiles, setTransportProfiles] = useState<TransportProfile[]>(
     [],
   );
@@ -1360,10 +1611,15 @@ function NodesPanel({
   const [profilesError, setProfilesError] = useState('');
 
   useEffect(() => {
+    if (!selectedNodeId && nodes[0]) {
+      setSelectedNodeId(nodes[0].id);
+    }
+  }, [nodes, selectedNodeId]);
+
+  useEffect(() => {
     if (!selectedNode) {
       setTransportProfiles([]);
-      setTransportProfileForm(emptyTransportProfileForm);
-      setEditingProfileId(null);
+      resetTransportProfileForm();
       setProfilesError('');
       setProfilesMessage('');
       return;
@@ -1536,693 +1792,478 @@ function NodesPanel({
     setTransportProfileForm(emptyTransportProfileForm);
   }
 
+  function applyTransportProfileTemplate(templateId: string) {
+    const template = transportProfileTemplates.find(
+      (item) => item.id === templateId,
+    );
+    if (!template) {
+      return;
+    }
+
+    setTransportProfileForm((current) => ({
+      ...current,
+      ...template.values,
+      name:
+        current.name.trim().length > 0
+          ? current.name
+          : template.values.name ?? current.name,
+      providerInboundId: current.providerInboundId,
+      status: current.status,
+    }));
+  }
+
+  if (nodes.length === 0) {
+    return (
+      <section className="panel">
+        <h2>Transport Profiles</h2>
+        <p className="muted">
+          Add a VPN node first, then sync or create transport profiles for it.
+        </p>
+      </section>
+    );
+  }
+
   return (
-    <section className="split-layout">
-      <form className="panel form-panel" onSubmit={onSubmit}>
-        <h2>{isEditing ? 'Edit VPN Node' : 'Add VPN Node'}</h2>
+    <section className="transport-profiles-layout">
+      <section className="panel transport-node-selector">
+        <div className="panel-heading">
+          <div>
+            <h2>Node</h2>
+            <p>
+              Transport profiles are separate inbounds attached to one VPN node.
+            </p>
+          </div>
+          <div className="row-actions">
+            <button
+              type="button"
+              onClick={syncTransportProfilesFromProvider}
+              disabled={!selectedNode || profilesLoading}
+            >
+              Sync from 3x-ui
+            </button>
+            <button
+              type="button"
+              onClick={() => loadTransportProfiles()}
+              disabled={!selectedNode || profilesLoading}
+            >
+              {profilesLoading ? 'Loading' : 'Reload'}
+            </button>
+          </div>
+        </div>
+
         <label>
-          Name
-          <input
-            required
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-          />
-        </label>
-        <label>
-          Country
-          <input
-            placeholder="Netherlands / NL"
-            value={form.country}
-            onChange={(event) =>
-              setForm({ ...form, country: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          VDS provider
-          <input
-            placeholder="Aeza / Timeweb / Selectel"
-            value={form.vdsProvider}
-            onChange={(event) =>
-              setForm({ ...form, vdsProvider: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          Host
-          <input
-            required
-            value={form.host}
-            onChange={(event) => setForm({ ...form, host: event.target.value })}
-          />
-        </label>
-        <label>
-          3x-ui username
-          <input
-            required={!isEditing}
-            placeholder={isEditing ? 'Leave blank to keep current' : 'admin'}
-            value={form.username}
-            onChange={(event) =>
-              setForm({ ...form, username: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          3x-ui password
-          <input
-            required={!isEditing}
-            type="password"
-            placeholder={isEditing ? 'Leave blank to keep current' : 'secret'}
-            value={form.password}
-            onChange={(event) =>
-              setForm({ ...form, password: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          Inbound ID
-          <input
-            required
-            type="number"
-            min="0"
-            value={form.inboundId}
-            onChange={(event) =>
-              setForm({ ...form, inboundId: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          Provider subscription URL prefix
-          <input
-            placeholder="https://109.120.140.251:2096/sub_9fK3xL8pQ2mZ7rT"
-            value={form.subscriptionBaseUrl}
-            onChange={(event) =>
-              setForm({ ...form, subscriptionBaseUrl: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          Usage scope
+          VPN node
           <select
-            value={form.usageScope}
-            onChange={(event) =>
-              setForm({
-                ...form,
-                usageScope: event.target.value as VpnNodeFormState['usageScope'],
-              })
-            }
+            value={selectedNode?.id ?? ''}
+            onChange={(event) => {
+              setSelectedNodeId(event.target.value);
+              resetTransportProfileForm();
+            }}
           >
-            <option value="general">General pool</option>
-            <option value="away">Away profile only</option>
+            {nodes.map((node) => (
+              <option key={node.id} value={node.id}>
+                {node.name ?? node.host} - fallback inbound{' '}
+                {node.inboundId ?? 'none'}
+              </option>
+            ))}
           </select>
         </label>
-        <label>
-          Capacity
-          <input
-            required
-            type="number"
-            min="1"
-            value={form.capacity}
-            onChange={(event) =>
-              setForm({ ...form, capacity: event.target.value })
-            }
-          />
+
+        {selectedNode ? (
+          <p className="muted">
+            Selected node fallback inbound: {selectedNode.inboundId ?? 'none'}.
+            Active profiles are preferred for new clients; fallback inbound is
+            kept for legacy compatibility.
+          </p>
+        ) : null}
+        {profilesError ? <div className="error-line">{profilesError}</div> : null}
+        {profilesMessage ? <p className="muted">{profilesMessage}</p> : null}
+      </section>
+
+      <form className="panel transport-profile-form" onSubmit={saveTransportProfile}>
+        <h2>{editingProfileId ? 'Edit Profile' : 'Add Profile'}</h2>
+        <label className="transport-template-picker">
+          Template
+          <select value="" onChange={(event) => applyTransportProfileTemplate(event.target.value)}>
+            <option value="">Choose a preset...</option>
+            {transportProfileTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.label} - {template.description}
+              </option>
+            ))}
+          </select>
         </label>
+        <div className="transport-profile-grid">
+          <label>
+            Name
+            <input
+              required
+              value={transportProfileForm.name}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  name: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Provider inbound
+            <input
+              type="number"
+              min="0"
+              placeholder="3x-ui inbound id"
+              value={transportProfileForm.providerInboundId}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  providerInboundId: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Protocol
+            <select
+              value={transportProfileForm.protocol}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  protocol: event.target.value as TransportProfile['protocol'],
+                })
+              }
+            >
+              <option value="vless">vless</option>
+              <option value="vmess">vmess</option>
+              <option value="trojan">trojan</option>
+              <option value="shadowsocks">shadowsocks</option>
+              <option value="wireguard">wireguard</option>
+            </select>
+          </label>
+          <label>
+            Transport
+            <select
+              value={transportProfileForm.transport}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  transport: event.target.value as TransportProfile['transport'],
+                })
+              }
+            >
+              <option value="tcp">tcp</option>
+              <option value="ws">ws</option>
+              <option value="grpc">grpc</option>
+              <option value="h2">h2</option>
+              <option value="http">http</option>
+            </select>
+          </label>
+          <label>
+            Security
+            <select
+              value={transportProfileForm.security}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  security: event.target.value as TransportProfile['security'],
+                })
+              }
+            >
+              <option value="none">none</option>
+              <option value="tls">tls</option>
+              <option value="reality">reality</option>
+            </select>
+          </label>
+          <label>
+            Port
+            <input
+              required
+              type="number"
+              min="1"
+              max="65535"
+              value={transportProfileForm.port}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  port: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            SNI / serverName
+            <input
+              value={transportProfileForm.sni}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  sni: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Host header
+            <input
+              value={transportProfileForm.hostHeader}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  hostHeader: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Path
+            <input
+              placeholder="/znet"
+              value={transportProfileForm.path}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  path: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            gRPC service
+            <input
+              value={transportProfileForm.serviceName}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  serviceName: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Flow
+            <input
+              value={transportProfileForm.flow}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  flow: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Fingerprint
+            <input
+              value={transportProfileForm.fingerprint}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  fingerprint: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            ALPN
+            <input
+              placeholder="h2,http/1.1"
+              value={transportProfileForm.alpn}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  alpn: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Public key
+            <input
+              value={transportProfileForm.publicKey}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  publicKey: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Short ID
+            <input
+              value={transportProfileForm.shortId}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  shortId: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            SpiderX
+            <input
+              value={transportProfileForm.spiderX}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  spiderX: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Status
+            <select
+              value={transportProfileForm.status}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  status: event.target.value as TransportProfile['status'],
+                })
+              }
+            >
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="degraded">degraded</option>
+              <option value="blocked">blocked</option>
+              <option value="disabled">disabled</option>
+            </select>
+          </label>
+          <label>
+            Priority
+            <input
+              type="number"
+              min="0"
+              value={transportProfileForm.priority}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  priority: event.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Weight
+            <input
+              type="number"
+              min="0"
+              value={transportProfileForm.weight}
+              onChange={(event) =>
+                setTransportProfileForm({
+                  ...transportProfileForm,
+                  weight: event.target.value,
+                })
+              }
+            />
+          </label>
+        </div>
         <div className="form-actions">
-          <button className="primary" type="submit">
-            {isEditing ? 'Save node' : 'Add node'}
+          <button className="primary" type="submit" disabled={profilesLoading}>
+            {editingProfileId ? 'Save profile' : 'Add profile'}
           </button>
-          {isEditing ? (
-            <>
-              <button className="danger" type="button" onClick={() => onDelete(editingNodeId!)}>
-                Delete node
-              </button>
-              <button type="button" onClick={onCancel}>
-                Cancel
-              </button>
-            </>
+          {editingProfileId ? (
+            <button type="button" onClick={resetTransportProfileForm}>
+              Cancel
+            </button>
           ) : null}
         </div>
       </form>
-      <section className="node-management-stack">
-        <section className="panel table-panel">
-          <h2>VPN Nodes</h2>
-          <div className="table-wrap">
-            <table className="nodes-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>VDS Provider</th>
-                  <th>Host</th>
-                  <th>Role</th>
-                  <th>Health</th>
-                  <th>Load</th>
-                  <th>Inbound</th>
-                  <th>Checked</th>
-                  <th>Last error</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {nodes.map((node) => (
-                  <tr key={node.id}>
-                    <td>
-                      <span className="node-label">
-                        {renderCountryFlag(node.country)}
-                        <span>{node.name ?? 'unnamed'}</span>
-                      </span>
-                    </td>
-                    <td>{renderProviderLink(node.vdsProvider)}</td>
-                    <td>
-                      <a href={node.host} target="_blank" rel="noreferrer">
-                        {node.host}
-                      </a>
-                      {node.subscriptionBaseUrl ? (
-                        <span className="cell-note">{node.subscriptionBaseUrl}</span>
-                      ) : null}
-                    </td>
-                    <td>
-                      <span className={`status-pill ${node.usageScope === 'away' ? 'teal' : 'green'}`}>
-                        {node.usageScope === 'away' ? 'away only' : 'general'}
-                      </span>
-                      <span className="cell-note">{node.status}</span>
-                    </td>
-                    <td>
-                      <span
-                        className={`status-pill ${healthTone(node.healthStatus)}`}
-                      >
-                        {node.healthStatus}
-                      </span>
-                      {node.failureCount > 0 ? (
-                        <span className="cell-note">fails: {node.failureCount}</span>
-                      ) : null}
-                    </td>
-                    <td>
-                      {node.currentLoad}/{node.capacity}
-                    </td>
-                    <td>{node.inboundId ?? 'none'}</td>
-                    <td>
-                      {formatDate(node.lastHealthCheckAt)}
-                      {node.lastSuccessfulHealthCheckAt ? (
-                        <span className="cell-note">
-                          last ok: {formatDate(node.lastSuccessfulHealthCheckAt)}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td>
-                      {node.lastError ? (
-                        <span className="error-text">{node.lastError}</span>
-                      ) : (
-                        <span className="muted">none</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="row-actions node-actions">
-                        <button onClick={() => onEdit(node)} type="button">
-                          Edit
-                        </button>
-                        {node.isActive ? (
-                          <button onClick={() => onDisable(node.id)} type="button">
-                            Disable
-                          </button>
-                        ) : (
-                          <button
-                            className="primary"
-                            onClick={() => onEnable(node.id)}
-                            type="button"
-                          >
-                            Enable
-                          </button>
-                        )}
-                        <button
-                          className="node-check-action"
-                          onClick={() => onCheck(node.id)}
-                          type="button"
-                        >
-                          Check now
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
 
-        <section className="panel table-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Transport Profiles</h2>
-              <p>
-                {selectedNode
-                  ? `Profiles for ${selectedNode.name ?? selectedNode.host}`
-                  : 'Select a VPN node to manage its profiles.'}
-              </p>
-            </div>
-            {selectedNode ? (
-              <div className="row-actions">
-                <button
-                  type="button"
-                  onClick={syncTransportProfilesFromProvider}
-                  disabled={profilesLoading}
-                >
-                  Sync from 3x-ui
-                </button>
-                <button
-                  type="button"
-                  onClick={() => loadTransportProfiles()}
-                  disabled={profilesLoading}
-                >
-                  {profilesLoading ? 'Loading' : 'Reload'}
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          {profilesError ? <div className="error-line">{profilesError}</div> : null}
-          {profilesMessage ? <p className="muted">{profilesMessage}</p> : null}
-
-          {selectedNode ? (
-            <>
-              <form
-                className="transport-profile-form"
-                onSubmit={saveTransportProfile}
-              >
-                <label className="transport-template-picker">
-                  Template
-                  <select
-                    value=""
-                    onChange={(event) => {
-                      const template = transportProfileTemplates.find(
-                        (item) => item.id === event.target.value,
-                      );
-                      if (!template) {
-                        return;
-                      }
-                      setTransportProfileForm((current) => ({
-                        ...current,
-                        ...template.values,
-                        name:
-                          current.name.trim().length > 0
-                            ? current.name
-                            : template.values.name ?? current.name,
-                        providerInboundId: current.providerInboundId,
-                        status: current.status,
-                      }));
-                    }}
-                  >
-                    <option value="">Choose a preset...</option>
-                    {transportProfileTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.label} - {template.description}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="transport-profile-grid">
-                  <label>
-                    Name
-                    <input
-                      required
-                      value={transportProfileForm.name}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          name: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Provider inbound
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="3x-ui inbound id"
-                      value={transportProfileForm.providerInboundId}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          providerInboundId: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Protocol
-                    <select
-                      value={transportProfileForm.protocol}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          protocol: event.target.value as TransportProfile['protocol'],
-                        })
-                      }
-                    >
-                      <option value="vless">vless</option>
-                      <option value="vmess">vmess</option>
-                      <option value="trojan">trojan</option>
-                      <option value="shadowsocks">shadowsocks</option>
-                      <option value="wireguard">wireguard</option>
-                    </select>
-                  </label>
-                  <label>
-                    Transport
-                    <select
-                      value={transportProfileForm.transport}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          transport:
-                            event.target.value as TransportProfile['transport'],
-                        })
-                      }
-                    >
-                      <option value="tcp">tcp</option>
-                      <option value="ws">ws</option>
-                      <option value="grpc">grpc</option>
-                      <option value="h2">h2</option>
-                      <option value="http">http</option>
-                    </select>
-                  </label>
-                  <label>
-                    Security
-                    <select
-                      value={transportProfileForm.security}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          security:
-                            event.target.value as TransportProfile['security'],
-                        })
-                      }
-                    >
-                      <option value="none">none</option>
-                      <option value="tls">tls</option>
-                      <option value="reality">reality</option>
-                    </select>
-                  </label>
-                  <label>
-                    Port
-                    <input
-                      required
-                      type="number"
-                      min="1"
-                      max="65535"
-                      value={transportProfileForm.port}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          port: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    SNI / serverName
-                    <input
-                      value={transportProfileForm.sni}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          sni: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Host header
-                    <input
-                      value={transportProfileForm.hostHeader}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          hostHeader: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Path
-                    <input
-                      placeholder="/znet"
-                      value={transportProfileForm.path}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          path: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    gRPC service
-                    <input
-                      value={transportProfileForm.serviceName}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          serviceName: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Flow
-                    <input
-                      value={transportProfileForm.flow}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          flow: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Fingerprint
-                    <input
-                      value={transportProfileForm.fingerprint}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          fingerprint: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    ALPN
-                    <input
-                      placeholder="h2,http/1.1"
-                      value={transportProfileForm.alpn}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          alpn: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Public key
-                    <input
-                      value={transportProfileForm.publicKey}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          publicKey: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Short ID
-                    <input
-                      value={transportProfileForm.shortId}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          shortId: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    SpiderX
-                    <input
-                      value={transportProfileForm.spiderX}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          spiderX: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Status
-                    <select
-                      value={transportProfileForm.status}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          status: event.target.value as TransportProfile['status'],
-                        })
-                      }
-                    >
-                      <option value="draft">draft</option>
-                      <option value="active">active</option>
-                      <option value="degraded">degraded</option>
-                      <option value="blocked">blocked</option>
-                      <option value="disabled">disabled</option>
-                    </select>
-                  </label>
-                  <label>
-                    Priority
-                    <input
-                      type="number"
-                      min="0"
-                      value={transportProfileForm.priority}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          priority: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Weight
-                    <input
-                      type="number"
-                      min="0"
-                      value={transportProfileForm.weight}
-                      onChange={(event) =>
-                        setTransportProfileForm({
-                          ...transportProfileForm,
-                          weight: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                </div>
-                <div className="form-actions">
-                  <button
-                    className="primary"
-                    type="submit"
-                    disabled={profilesLoading}
-                  >
-                    {editingProfileId ? 'Save profile' : 'Add profile'}
-                  </button>
-                  {editingProfileId ? (
-                    <button type="button" onClick={resetTransportProfileForm}>
-                      Cancel
-                    </button>
-                  ) : null}
-                </div>
-              </form>
-
-              <div className="table-wrap">
-                <table className="transport-profiles-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Profile</th>
-                      <th>Endpoint</th>
-                      <th>Status</th>
-                      <th>Check</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transportProfiles.map((profile) => (
-                      <tr key={profile.id}>
-                        <td>
-                          <strong>{profile.name}</strong>
-                          <span className="cell-note">
-                            priority {profile.priority}, weight {profile.weight}
-                          </span>
-                        </td>
-                        <td>
-                          {formatTransportProfile(profile)}
-                          <span className="cell-note">
-                            inbound {profile.providerInboundId ?? 'not linked'}
-                          </span>
-                        </td>
-                        <td>
-                          :{profile.port}
-                          {profile.sni ? (
-                            <span className="cell-note">SNI {profile.sni}</span>
-                          ) : null}
-                          {profile.path ? (
-                            <span className="cell-note">path {profile.path}</span>
-                          ) : null}
-                          {profile.serviceName ? (
-                            <span className="cell-note">
-                              gRPC {profile.serviceName}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td>
-                          <span
-                            className={`status-pill ${transportProfileTone(
-                              profile.status,
-                            )}`}
-                          >
-                            {profile.status}
-                          </span>
-                          {profile.lastError ? (
-                            <span className="cell-note error-text">
-                              {profile.lastError}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td>{formatDate(profile.lastCheckAt)}</td>
-                        <td>
-                          <div className="row-actions">
-                            <button
-                              type="button"
-                              onClick={() => editTransportProfile(profile)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => checkTransportProfile(profile)}
-                              disabled={profilesLoading}
-                            >
-                              Check
-                            </button>
-                            <button
-                              className="danger"
-                              type="button"
-                              onClick={() => deleteTransportProfile(profile)}
-                              disabled={profilesLoading}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {transportProfiles.length === 0 ? (
-                      <tr>
-                        <td colSpan={6}>No transport profiles yet.</td>
-                      </tr>
+      <section className="panel table-panel">
+        <h2>Profiles</h2>
+        <div className="table-wrap">
+          <table className="transport-profiles-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Profile</th>
+                <th>Endpoint</th>
+                <th>Status</th>
+                <th>Check</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transportProfiles.map((profile) => (
+                <tr key={profile.id}>
+                  <td>
+                    <strong>{profile.name}</strong>
+                    <span className="cell-note">
+                      priority {profile.priority}, weight {profile.weight}
+                    </span>
+                  </td>
+                  <td>
+                    {formatTransportProfile(profile)}
+                    <span className="cell-note">
+                      inbound {profile.providerInboundId ?? 'not linked'}
+                    </span>
+                  </td>
+                  <td>
+                    :{profile.port}
+                    {profile.sni ? (
+                      <span className="cell-note">SNI {profile.sni}</span>
                     ) : null}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
-            <p className="muted">
-              Click Edit on a VPN node first. Profiles are attached to a node,
-              not to the global dashboard.
-            </p>
-          )}
-        </section>
+                    {profile.path ? (
+                      <span className="cell-note">path {profile.path}</span>
+                    ) : null}
+                    {profile.serviceName ? (
+                      <span className="cell-note">
+                        gRPC {profile.serviceName}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td>
+                    <span
+                      className={`status-pill ${transportProfileTone(
+                        profile.status,
+                      )}`}
+                    >
+                      {profile.status}
+                    </span>
+                    {profile.lastError ? (
+                      <span className="cell-note error-text">
+                        {profile.lastError}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td>{formatDate(profile.lastCheckAt)}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        onClick={() => editTransportProfile(profile)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => checkTransportProfile(profile)}
+                        disabled={profilesLoading}
+                      >
+                        Check
+                      </button>
+                      <button
+                        className="danger"
+                        type="button"
+                        onClick={() => deleteTransportProfile(profile)}
+                        disabled={profilesLoading}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {transportProfiles.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No transport profiles yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </section>
     </section>
   );
